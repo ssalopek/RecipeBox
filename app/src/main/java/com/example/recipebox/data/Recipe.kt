@@ -1,5 +1,6 @@
 package com.example.recipebox.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -14,6 +15,6 @@ data class Recipe(
     val bodyText: String,
     val sourceUrl: String? = null,
     val sourcePlatform: String? = null,
-    val imagePaths: String = "",
+    @ColumnInfo(name = "imagePaths") val imageName: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

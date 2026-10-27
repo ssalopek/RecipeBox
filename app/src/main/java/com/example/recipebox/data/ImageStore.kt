@@ -14,8 +14,8 @@ import java.util.concurrent.TimeUnit
 import androidx.core.graphics.scale
 
 /** The saved image file names of a recipe. */
-fun Recipe.imageFiles(): List<String> = imagePaths.lines().filter { it.isNotBlank() }
-
+val Recipe.coverImage: String?
+    get() = imageName.lineSequence().firstOrNull { it.isNotBlank() }
 object ImageStore {
     private const val MAX_BYTES = 8L * 1024 * 1024
     private const val TARGET_WIDTH = 1080
@@ -33,10 +33,10 @@ object ImageStore {
 
     fun file(context: Context, name: String) = File(dir(context), name)
 
-    /** Downloads each image, shrinks it, saves it as JPEG. Returns the file names that worked. */
-    suspend fun saveAll(context: Context, urls: List<String>): List<String> =
+    /** Downloads the image, shrinks it, saves it as JPEG. Returns the file name, or null if it failed. */
+    suspend fun save(context: Context, url: String): String? =
         withContext(Dispatchers.IO) {
-            urls.mapNotNull { url -> runCatching { download(context, url) }.getOrNull() }
+            runCatching { download(context, url) }.getOrNull()
         }
 
     suspend fun deleteAll(context: Context, names: List<String>) =

@@ -1,10 +1,14 @@
 package com.example.recipebox
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.example.recipebox.data.Platform
 import com.example.recipebox.data.RecipeExtractor
 import com.example.recipebox.data.UrlTools
@@ -27,7 +31,7 @@ fun ImportScreen(
             if (rawUrl == null) sharedText else sharedText.replace(rawUrl, "").trim()
         )
     }
-    val images = remember { mutableStateListOf<String>() }
+    var image by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(url != null) }
     var saving by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -45,8 +49,7 @@ fun ImportScreen(
         if (result != null) {
             title = result.title
             body = result.body.ifBlank { body }
-            images.clear()
-            images.addAll(result.images)
+            image = result.image
             note = if (result.body.isBlank()) {
                 "Only the title was available. Paste the caption or recipe text below."
             } else {
@@ -81,11 +84,19 @@ fun ImportScreen(
                 note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
 
-            if (images.isNotEmpty()) {
-                ImageGallery(
-                    models = images.toList(),
-                    onRemove = { index -> images.removeAt(index) }
+            image?.let { imageUrl ->
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 )
+                TextButton(enabled = !saving, onClick = { image = null }) {
+                    Text("Remove image")
+                }
             }
 
             OutlinedTextField(
@@ -108,7 +119,7 @@ fun ImportScreen(
                     enabled = !loading && !saving && title.isNotBlank(),
                     onClick = {
                         saving = true
-                        vm.saveImported(title, body, url, platform?.name, images.toList(), onSaved)
+                        vm.saveImported(title, body, url, platform?.name, image, onSaved)
                     }
                 ) { Text(if (saving) "Saving…" else "Save") }
                 OutlinedButton(enabled = !saving, onClick = onCancel) { Text("Cancel") }

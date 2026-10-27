@@ -18,12 +18,11 @@ import java.util.concurrent.TimeUnit
 data class Extracted(
     val title: String,
     val body: String,
-    val images: List<String> = emptyList()
+    val image: String? = null
 )
 
 object RecipeExtractor {
     private const val MAX_BYTES = 3L * 1024 * 1024
-    private const val MAX_IMAGES = 8
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
@@ -46,8 +45,8 @@ object RecipeExtractor {
                     else -> fromPage(url, platform)
                 }
                 // YouTube thumbnails can be built from the video ID if the page gave no image
-                if (platform == Platform.YOUTUBE && result != null && result.images.isEmpty()) {
-                    result.copy(images = listOfNotNull(youtubeThumbnail(url)))
+                if (platform == Platform.YOUTUBE && result != null && result.image == null) {
+                    result.copy(image = youtubeThumbnail(url))
                 } else result
             } catch (e: CancellationException) {
                 throw e
@@ -82,14 +81,14 @@ object RecipeExtractor {
         } else emptyMap()
         val html = get(url, headers)
         val doc = Jsoup.parse(html, url)
-        val ogImages = cleanImages(listOfNotNull(meta(doc, "og:image")), url)
+        val ogImage = resolveImage(meta(doc, "og:image"), url)
 
         findRecipe(doc)?.let { recipe ->
             val body = recipeToText(recipe)
             if (body != null) {
                 val name = clean(recipe.optString("name"))
-                val images = recipeImages(recipe, url).ifEmpty { ogImages }
-                return Extracted(name.ifBlank { pageTitle(doc) }, body, images)
+                val image = resolveImage(firstImage(recipe.opt("image")), url) ?: ogImage
+                return Extracted(name.ifBlank { pageTitle(doc) }, body, image)
             }
         }
 
@@ -98,7 +97,7 @@ object RecipeExtractor {
             ?: meta(doc, "description")
         val title = pageTitle(doc)
         if (title.isBlank() && description.isNullOrBlank()) return null
-        return Extracted(title, description.orEmpty(), ogImages)
+        return Extracted(title, description.orEmpty(), ogImage)
     }
 
     private fun pageTitle(doc: Document): String =
@@ -110,51 +109,22 @@ object RecipeExtractor {
 
     private fun clean(s: String): String = Jsoup.parse(s).text().trim()
 
-    // ---------- Images ----------
+    // ---------- Image ----------
 
-    // Strips size markers (like -300x200 or /16x9/) so crops of one photo count as duplicates
-    private val sizeMarker = Regex("""[-_/.]?\d{1,4}x\d{1,4}""")
-
-    private fun cleanImages(urls: List<String>, base: String): List<String> {
-        val seen = HashSet<String>()
-        return urls.mapNotNull { raw ->
-            val absolute = runCatching { URI(base).resolve(raw.trim()).toString() }
-                .getOrNull() ?: return@mapNotNull null
-            if (!absolute.startsWith("http://") && !absolute.startsWith("https://")) {
-                return@mapNotNull null
-            }
-            val key = absolute.substringBefore('?').replace(sizeMarker, "")
-            if (seen.add(key)) absolute else null
-        }.take(MAX_IMAGES)
+    // Makes relative links absolute and accepts only http(s)
+    private fun resolveImage(raw: String?, base: String): String? {
+        if (raw.isNullOrBlank()) return null
+        val absolute = runCatching { URI(base).resolve(raw.trim()).toString() }.getOrNull()
+            ?: return null
+        return absolute.takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
 
-    // "image" can be a string, a list, or an ImageObject with a url
-    private fun collectImages(node: Any?, out: MutableList<String>) {
-        when (node) {
-            is String -> out.add(node)
-            is JSONArray -> for (i in 0 until node.length()) collectImages(node.opt(i), out)
-            is JSONObject -> {
-                val u = node.optString("url").ifBlank { node.optString("contentUrl") }
-                if (u.isNotBlank()) out.add(u)
-            }
-        }
-    }
-
-    private fun collectStepImages(node: Any?, out: MutableList<String>) {
-        when (node) {
-            is JSONArray -> for (i in 0 until node.length()) collectStepImages(node.opt(i), out)
-            is JSONObject -> {
-                collectImages(node.opt("image"), out)
-                collectStepImages(node.opt("itemListElement"), out)
-            }
-        }
-    }
-
-    private fun recipeImages(recipe: JSONObject, base: String): List<String> {
-        val raw = mutableListOf<String>()
-        collectImages(recipe.opt("image"), raw)
-        collectStepImages(recipe.opt("recipeInstructions"), raw)
-        return cleanImages(raw, base)
+    // "image" can be a string, a list, or an ImageObject with a url; take the first one
+    private fun firstImage(node: Any?): String? = when (node) {
+        is String -> node
+        is JSONArray -> (0 until node.length()).firstNotNullOfOrNull { firstImage(node.opt(it)) }
+        is JSONObject -> node.optString("url").ifBlank { node.optString("contentUrl") }.ifBlank { null }
+        else -> null
     }
 
     private fun youtubeThumbnail(url: String): String? {
@@ -240,16 +210,15 @@ object RecipeExtractor {
         val json = JSONObject(get("https://www.tiktok.com/oembed?url=${enc(url)}"))
         val caption = json.optString("title").trim()
         if (caption.isEmpty()) return null
-        val images = cleanImages(listOf(json.optString("thumbnail_url")), url)
-        return Extracted(shortTitle(caption), caption, images)
+        val image = resolveImage(json.optString("thumbnail_url"), url)
+        return Extracted(shortTitle(caption), caption, image)
     }
 
     private fun youtubeOEmbed(url: String): Extracted? {
         val json = JSONObject(get("https://www.youtube.com/oembed?url=${enc(url)}&format=json"))
         val title = json.optString("title").trim()
         if (title.isEmpty()) return null
-        val images = cleanImages(listOf(json.optString("thumbnail_url")), url)
-        return Extracted(title, "", images)
+        return Extracted(title, "", resolveImage(json.optString("thumbnail_url"), url))
     }
 
     // Unofficial: reads the full description embedded in the page. Falls back to og:description.
@@ -290,8 +259,8 @@ object RecipeExtractor {
         val caption = captionElement.text().replace("\\n", "\n").lines()
             .joinToString("\n") { it.trim() }.trim().takeIf { it.isNotEmpty() } ?: return null
 
-        val image = doc.selectFirst("img.EmbeddedMediaImage")?.absUrl("src").orEmpty()
-        return Extracted(shortTitle(caption), caption, cleanImages(listOf(image), url))
+        val image = resolveImage(doc.selectFirst("img.EmbeddedMediaImage")?.absUrl("src"), url)
+        return Extracted(shortTitle(caption), caption, image)
     }
 
     private fun instagramPreview(url: String): Extracted? {
@@ -305,8 +274,7 @@ object RecipeExtractor {
         val caption = Regex("""^.*?:\s*["“](.*)["”]\.?$""", RegexOption.DOT_MATCHES_ALL)
             .find(description)?.groupValues?.get(1)?.trim()
             ?.takeIf { it.isNotEmpty() } ?: return null
-        val images = cleanImages(listOfNotNull(meta(doc, "og:image")), url)
-        return Extracted(shortTitle(caption), caption, images)
+        return Extracted(shortTitle(caption), caption, resolveImage(meta(doc, "og:image"), url))
     }
 
     private fun shortTitle(caption: String): String {

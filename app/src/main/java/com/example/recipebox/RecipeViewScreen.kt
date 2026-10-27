@@ -10,8 +10,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import com.example.recipebox.data.ImageStore
-import com.example.recipebox.data.imageFiles
+import com.example.recipebox.data.coverImage
 
 @Composable
 fun RecipeViewScreen(
@@ -47,7 +51,17 @@ fun RecipeViewScreen(
 
                 Text(r.title, style = MaterialTheme.typography.headlineSmall)
                 r.sourceUrl?.let { SourceTag(it) }
-                ImageGallery(r.imageFiles().map { ImageStore.file(context, it) })
+                r.coverImage?.let { name ->
+                    AsyncImage(
+                        model = ImageStore.file(context, name),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
 
                 SelectionContainer {
                     Text(r.bodyText, style = MaterialTheme.typography.bodyLarge)

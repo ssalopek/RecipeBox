@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import com.example.recipebox.data.UrlTools
 import kotlinx.coroutines.flow.combine
 import com.example.recipebox.data.ImageStore
-import com.example.recipebox.data.imageFiles
 
 class RecipeViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).recipeDao()
@@ -43,12 +42,24 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun findBySourceUrl(url: String): Recipe? = dao.findBySourceUrl(url)
 
-    fun save(existing: Recipe?, title: String, body: String) {
+    fun save(existing: Recipe?, title: String, body: String, removeImage: Boolean = false) {
         viewModelScope.launch {
             if (existing == null) {
                 dao.insert(Recipe(title = title.trim(), bodyText = body))
             } else {
-                dao.update(existing.copy(title = title.trim(), bodyText = body))
+                dao.update(
+                    existing.copy(
+                        title = title.trim(),
+                        bodyText = body,
+                        imageName = if (removeImage) "" else existing.imageName
+                    )
+                )
+                if (removeImage) {
+                    ImageStore.deleteAll(
+                        getApplication(),
+                        existing.imageName.lines().filter { it.isNotBlank() }
+                    )
+                }
             }
         }
     }
@@ -58,19 +69,19 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
         body: String,
         sourceUrl: String?,
         platform: String?,
-        imageUrls: List<String>,
+        imageUrl: String?,
         onDone: () -> Unit
     ) {
         viewModelScope.launch {
             if (sourceUrl == null || dao.findBySourceUrl(sourceUrl) == null) {
-                val files = ImageStore.saveAll(getApplication(), imageUrls)
+                val imageName = imageUrl?.let { ImageStore.save(getApplication(), it) }.orEmpty()
                 dao.insert(
                     Recipe(
                         title = title.trim(),
                         bodyText = body,
                         sourceUrl = sourceUrl,
                         sourcePlatform = platform,
-                        imagePaths = files.joinToString("\n")
+                        imageName = imageName
                     )
                 )
             }
@@ -81,7 +92,7 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
     fun delete(recipe: Recipe) {
         viewModelScope.launch {
             dao.delete(recipe)
-            ImageStore.deleteAll(getApplication(), recipe.imageFiles())
+            ImageStore.deleteAll(getApplication(), recipe.imageName.lines().filter { it.isNotBlank() })
         }
     }
 }

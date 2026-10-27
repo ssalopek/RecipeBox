@@ -18,7 +18,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.example.recipebox.data.ImageStore
-import com.example.recipebox.data.imageFiles
+import com.example.recipebox.data.coverImage
 
 @Composable
 fun RecipeListScreen(
@@ -69,7 +69,7 @@ fun RecipeListScreen(
                                 modifier = Modifier.padding(16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                recipe.imageFiles().firstOrNull()?.let { name ->
+                                recipe.coverImage?.let { name ->
                                     AsyncImage(
                                         model = ImageStore.file(context, name),
                                         contentDescription = null,
