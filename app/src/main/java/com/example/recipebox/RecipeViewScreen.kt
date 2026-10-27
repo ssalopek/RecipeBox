@@ -25,6 +25,8 @@ fun RecipeViewScreen(
     onBack: () -> Unit
 ) {
     val recipe by remember(id) { vm.observe(id) }.collectAsState(initial = null)
+    val categories by remember(id) { vm.observeCategoriesOf(id) }
+        .collectAsState(initial = emptyList())
 
     // Keep the screen awake while cooking
     val view = LocalView.current
@@ -51,6 +53,7 @@ fun RecipeViewScreen(
 
                 Text(r.title, style = MaterialTheme.typography.headlineSmall)
                 r.sourceUrl?.let { SourceTag(it) }
+                CategoryTags(categories)
                 r.coverImage?.let { name ->
                     AsyncImage(
                         model = ImageStore.file(context, name),

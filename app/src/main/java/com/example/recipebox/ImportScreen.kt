@@ -25,6 +25,8 @@ fun ImportScreen(
     val url = remember(rawUrl) { rawUrl?.let { UrlTools.normalize(it) } }
     val platform = remember(url) { url?.let { UrlTools.identifyPlatform(it) } }
 
+    var selected by remember { mutableStateOf(setOf<Long>()) }
+
     var title by remember { mutableStateOf("") }
     var body by remember {
         mutableStateOf(
@@ -107,6 +109,13 @@ fun ImportScreen(
                 enabled = !loading && !saving,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            CategoryPicker(
+                vm = vm,
+                selected = selected,
+                onSelectedChange = { selected = it }
+            )
+
             OutlinedTextField(
                 value = body,
                 onValueChange = { body = it },
@@ -119,7 +128,9 @@ fun ImportScreen(
                     enabled = !loading && !saving && title.isNotBlank(),
                     onClick = {
                         saving = true
-                        vm.saveImported(title, body, url, platform?.name, image, onSaved)
+                        vm.saveImported(
+                            title, body, url, platform?.name, image, selected, onSaved
+                        )
                     }
                 ) { Text(if (saving) "Saving…" else "Save") }
                 OutlinedButton(enabled = !saving, onClick = onCancel) { Text("Cancel") }
