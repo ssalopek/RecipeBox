@@ -34,7 +34,7 @@ fun RecipeEditScreen(
 
     val context = LocalContext.current
 
-    // rememberSaveable keeps what you typed when the phone rotates or the theme changes
+    // rememberSaveable keeps what you typed when the theme, font size or language changes
     var title by rememberSaveable(id) { mutableStateOf("") }
     var body by rememberSaveable(id) { mutableStateOf("") }
     var removeImage by rememberSaveable(id) { mutableStateOf(false) }

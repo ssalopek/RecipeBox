@@ -19,7 +19,8 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.RecipeBox"
             android:windowSoftInputMode="adjustResize"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
 
             <!-- App icon in the launcher. Must stay separate: it has no data type. -->
             <intent-filter>

@@ -17,7 +17,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.recipebox.data.Category
 
-/** Lets rememberSaveable keep a set of category IDs across rotation. */
+/** Lets rememberSaveable keep a set of category IDs across configuration changes. */
 val LongSetSaver = listSaver<Set<Long>, Long>(
     save = { it.toList() },
     restore = { it.toSet() }

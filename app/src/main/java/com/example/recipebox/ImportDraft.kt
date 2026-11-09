@@ -7,7 +7,8 @@ import com.example.recipebox.data.Platform
 
 /**
  * Everything on the import screen. It lives in the ViewModel, not in the screen,
- * so rotating the phone neither loses what you typed nor fetches the page again.
+ * so a configuration change (theme, font size, language) neither loses what you typed
+ * nor fetches the page again.
  */
 class ImportDraft(
     val sharedText: String,

@@ -12,7 +12,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Only on a fresh start, so rotating the screen doesn't re-import.
+        // Only on a fresh start, so a recreated activity (theme or language change) doesn't re-import.
         if (savedInstanceState == null) handleShare(intent)
         setContent {
             RecipeBoxTheme {

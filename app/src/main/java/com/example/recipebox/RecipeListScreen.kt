@@ -39,6 +39,8 @@ fun RecipeListScreen(
         }
     ) { padding ->
         Column(Modifier.padding(padding)) {
+            DebugBar(vm)
+
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

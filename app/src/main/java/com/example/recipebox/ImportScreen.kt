@@ -17,7 +17,7 @@ fun ImportScreen(
     onDuplicate: (Long) -> Unit,
     onCancel: () -> Unit
 ) {
-    // The import state lives in the ViewModel so it survives rotation.
+    // The import state lives in the ViewModel so it survives configuration changes (theme, font size, language).
     // It is null only for a moment while the screen is being left.
     val draft = vm.importDraft ?: return
 

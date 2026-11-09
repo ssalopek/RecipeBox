@@ -18,6 +18,7 @@ import com.example.recipebox.data.RecipeExtractor
 import com.example.recipebox.data.UrlTools
 import com.example.recipebox.data.imageFileNames
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,8 +26,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 class RecipeViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
@@ -309,6 +314,53 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
         launchSafely("Couldn't delete the recipe") {
             dao.delete(recipe)
             ImageStore.deleteAll(getApplication(), recipe.imageFileNames)
+        }
+    }
+
+    // ---------- Debug tools (see DebugTools.kt) ----------
+
+    /** Every recipe, with its category names, plus all categories, as pretty-printed JSON. */
+    suspend fun debugDatabaseJson(): String {
+        val recipes = dao.observeAll().first()
+        val categories = dao.observeCategories().first()
+        val links = dao.observeLinks().first()
+        val categoryNames = categories.associate { it.id to it.name }
+
+        val recipeArray = JSONArray()
+        recipes.forEach { r ->
+            recipeArray.put(
+                JSONObject().apply {
+                    put("id", r.id)
+                    put("title", r.title)
+                    put("bodyText", r.bodyText)
+                    put("sourceUrl", r.sourceUrl ?: JSONObject.NULL)
+                    put("sourcePlatform", r.sourcePlatform ?: JSONObject.NULL)
+                    put("imageName", r.imageName)
+                    put("createdAt", r.createdAt)
+                    put(
+                        "categories",
+                        JSONArray(
+                            links.filter { it.recipeId == r.id }
+                                .mapNotNull { categoryNames[it.categoryId] }
+                        )
+                    )
+                }
+            )
+        }
+        val root = JSONObject()
+        root.put("recipes", recipeArray)
+        root.put("categories", JSONArray(categories.map { it.name }))
+        // org.json writes "/" as "\/", which makes links hard to read
+        return root.toString(2).replace("\\/", "/")
+    }
+
+    /** Deletes every recipe, category and saved image. */
+    fun debugDeleteEverything() {
+        launchSafely("Couldn't delete the database") {
+            withContext(Dispatchers.IO) { db.clearAllTables() }
+            ImageStore.deleteAllFiles(getApplication())
+            _selectedCategory.value = null
+            _query.value = ""
         }
     }
 }

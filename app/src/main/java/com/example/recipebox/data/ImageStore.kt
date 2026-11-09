@@ -43,6 +43,12 @@ object ImageStore {
             names.forEach { file(context, it).delete() }
         }
 
+    /** Deletes every saved image file. Used by the debug tools. */
+    suspend fun deleteAllFiles(context: Context) =
+        withContext(Dispatchers.IO) {
+            File(context.filesDir, DIR_NAME).listFiles()?.forEach { it.delete() }
+        }
+
     private fun download(context: Context, url: String): String {
         val request = Request.Builder().url(url).header("User-Agent", Http.USER_AGENT).build()
         val bytes = Http.client.newCall(request).execute().use { response ->
