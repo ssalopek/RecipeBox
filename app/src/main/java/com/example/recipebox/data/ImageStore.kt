@@ -3,35 +3,34 @@ package com.example.recipebox.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import androidx.core.graphics.scale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
-import java.util.concurrent.TimeUnit
-import androidx.core.graphics.scale
 
-/** The saved image file names of a recipe. */
+/**
+ * Saved image file names of a recipe. The database column is still called "imagePaths"
+ * because an early version stored several names, one per line. New rows hold at most one.
+ */
+val Recipe.imageFileNames: List<String>
+    get() = imageName.lines().filter { it.isNotBlank() }
+
+/** The one image shown for a recipe, if any. */
 val Recipe.coverImage: String?
-    get() = imageName.lineSequence().firstOrNull { it.isNotBlank() }
+    get() = imageFileNames.firstOrNull()
+
 object ImageStore {
+    private const val DIR_NAME = "recipe_images"
     private const val MAX_BYTES = 8L * 1024 * 1024
     private const val TARGET_WIDTH = 1080
-    private const val USER_AGENT =
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
-
-    private fun dir(context: Context) =
-        File(context.filesDir, "recipe_images").apply { mkdirs() }
-
-    fun file(context: Context, name: String) = File(dir(context), name)
+    /** Only builds the path. It does no file I/O, so it is safe to call while composing. */
+    fun file(context: Context, name: String) = File(File(context.filesDir, DIR_NAME), name)
 
     /** Downloads the image, shrinks it, saves it as JPEG. Returns the file name, or null if it failed. */
     suspend fun save(context: Context, url: String): String? =
@@ -45,8 +44,8 @@ object ImageStore {
         }
 
     private fun download(context: Context, url: String): String {
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-        val bytes = client.newCall(request).execute().use { response ->
+        val request = Request.Builder().url(url).header("User-Agent", Http.USER_AGENT).build()
+        val bytes = Http.client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")
             val source = response.body.source()
             if (source.request(MAX_BYTES)) error("image too large")
@@ -64,14 +63,27 @@ object ImageStore {
             BitmapFactory.Options().apply { inSampleSize = sample }
         ) ?: error("could not decode")
 
-        val bitmap = if (decoded.width > TARGET_WIDTH) {
+        val scaled = if (decoded.width > TARGET_WIDTH) {
             decoded.scale(TARGET_WIDTH, decoded.height * TARGET_WIDTH / decoded.width)
         } else decoded
 
         val name = "${UUID.randomUUID()}.jpg"
-        FileOutputStream(file(context, name)).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        val target = file(context, name)
+        target.parentFile?.mkdirs()
+        FileOutputStream(target).use { out ->
+            flattenOnWhite(scaled).compress(Bitmap.CompressFormat.JPEG, 85, out)
         }
         return name
+    }
+
+    // JPEG has no transparency, so transparent PNG/WebP images would turn black
+    private fun flattenOnWhite(source: Bitmap): Bitmap {
+        if (!source.hasAlpha()) return source
+        val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        Canvas(result).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(source, 0f, 0f, null)
+        }
+        return result
     }
 }

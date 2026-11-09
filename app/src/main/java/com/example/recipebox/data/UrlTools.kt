@@ -16,8 +16,33 @@ object UrlTools {
     fun extractUrl(text: String): String? =
         urlRegex.find(text)?.value?.trimEnd('.', ',', ')', ']', '!', '?')
 
-    /** Same video shared twice should produce the same string. */
+    private val youtubeIdRegex = Regex("^[A-Za-z0-9_-]{11}$")
+
+    /** The 11-character video ID of a YouTube link (watch, youtu.be, shorts, embed, live), or null. */
+    fun youtubeVideoId(url: String): String? {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        val host = uri.host?.lowercase()?.removePrefix("www.") ?: return null
+        val segments = uri.pathSegments
+        val id = when {
+            host == "youtu.be" -> segments.firstOrNull()
+            host == "youtube.com" || host.endsWith(".youtube.com") ->
+                when (segments.firstOrNull()) {
+                    "watch" -> uri.getQueryParameter("v")
+                    "shorts", "embed", "live", "v" -> segments.getOrNull(1)
+                    else -> null
+                }
+            else -> null
+        }
+        return id?.takeIf { youtubeIdRegex.matches(it) }
+    }
+
+    /**
+     * Same video shared twice should produce the same string.
+     * All YouTube link styles (watch, shorts, youtu.be, with or without timestamps)
+     * collapse to https://youtu.be/ID.
+     */
     fun normalize(raw: String): String {
+        youtubeVideoId(raw)?.let { return "https://youtu.be/$it" }
         val uri = Uri.parse(raw)
         val host = uri.host?.lowercase()?.removePrefix("www.") ?: return raw
         val builder = Uri.Builder()

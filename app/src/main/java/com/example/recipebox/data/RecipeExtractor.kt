@@ -1,19 +1,17 @@
 package com.example.recipebox.data
 
-import android.net.Uri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.ByteArrayInputStream
 import java.net.URI
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 data class Extracted(
     val title: String,
@@ -23,14 +21,6 @@ data class Extracted(
 
 object RecipeExtractor {
     private const val MAX_BYTES = 3L * 1024 * 1024
-    private const val USER_AGENT =
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
 
     suspend fun extract(url: String, platform: Platform): Extracted? =
         withContext(Dispatchers.IO) {
@@ -39,7 +29,7 @@ object RecipeExtractor {
                     Platform.TIKTOK ->
                         runCatching { tiktokOEmbed(url) }.getOrNull() ?: fromPage(url, platform)
                     Platform.INSTAGRAM ->
-                        instagramCaption(url) ?: fromPage(url, platform)
+                        runCatching { instagramEmbed(url) }.getOrNull() ?: fromPage(url, platform)
                     Platform.YOUTUBE ->
                         runCatching { fromPage(url, platform) }.getOrNull() ?: youtubeOEmbed(url)
                     else -> fromPage(url, platform)
@@ -57,30 +47,54 @@ object RecipeExtractor {
 
     // ---------- Networking ----------
 
-    private fun get(url: String, extraHeaders: Map<String, String> = emptyMap()): String {
+    private class Fetched(val bytes: ByteArray, val charset: String?)
+
+    private fun fetch(url: String, extraHeaders: Map<String, String> = emptyMap()): Fetched {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", Http.USER_AGENT)
             .header("Accept-Language", "en")
             .apply { extraHeaders.forEach { (k, v) -> header(k, v) } }
             .build()
-        client.newCall(request).execute().use { response ->
+        Http.client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")
             if (response.request.url.host.startsWith("consent.")) error("consent wall")
-            val source = response.body.source()
+            val body = response.body
+            val charset = body.contentType()?.charset()?.name()
+            val source = body.source()
             source.request(MAX_BYTES)
-            return source.buffer.clone().readUtf8()
+            return Fetched(source.buffer.clone().readByteArray(), charset)
         }
     }
+
+    /** JSON endpoints (oEmbed) are always UTF-8. */
+    private fun getText(url: String): String =
+        String(fetch(url).bytes, Charsets.UTF_8)
+
+    private fun getDocument(url: String, extraHeaders: Map<String, String> = emptyMap()): Document {
+        val page = fetch(url, extraHeaders)
+        return parseBytes(page.bytes, page.charset, url)
+    }
+
+    /**
+     * Parses HTML bytes with the right character set. Uses the charset from the HTTP header
+     * if there is one, otherwise Jsoup looks at the BOM and the <meta charset> tag.
+     */
+    internal fun parseBytes(bytes: ByteArray, charset: String?, url: String): Document =
+        Jsoup.parse(ByteArrayInputStream(bytes), charset, url)
 
     // ---------- Web pages ----------
 
     private fun fromPage(url: String, platform: Platform): Extracted? {
+        // Pre-sets YouTube's EU consent cookie, otherwise EU requests get a consent page instead
+        // of the video. Remove this line if you'd rather not do that.
         val headers = if (platform == Platform.YOUTUBE) {
             mapOf("Cookie" to "SOCS=CAI; CONSENT=YES+1")
         } else emptyMap()
-        val html = get(url, headers)
-        val doc = Jsoup.parse(html, url)
+        return parsePage(getDocument(url, headers), url, platform)
+    }
+
+    internal fun parsePage(doc: Document, url: String, platform: Platform): Extracted? {
         val ogImage = resolveImage(meta(doc, "og:image"), url)
 
         findRecipe(doc)?.let { recipe ->
@@ -92,7 +106,7 @@ object RecipeExtractor {
             }
         }
 
-        val description = (if (platform == Platform.YOUTUBE) youtubeDescription(html) else null)
+        val description = (if (platform == Platform.YOUTUBE) youtubeDescription(doc) else null)
             ?: meta(doc, "og:description")
             ?: meta(doc, "description")
         val title = pageTitle(doc)
@@ -111,12 +125,16 @@ object RecipeExtractor {
 
     // ---------- Image ----------
 
-    // Makes relative links absolute and accepts only http(s)
+    // Makes relative links absolute. Android blocks plain http, so http images are upgraded to https.
     private fun resolveImage(raw: String?, base: String): String? {
         if (raw.isNullOrBlank()) return null
         val absolute = runCatching { URI(base).resolve(raw.trim()).toString() }.getOrNull()
             ?: return null
-        return absolute.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        return when {
+            absolute.startsWith("https://") -> absolute
+            absolute.startsWith("http://") -> "https://" + absolute.removePrefix("http://")
+            else -> null
+        }
     }
 
     // "image" can be a string, a list, or an ImageObject with a url; take the first one
@@ -127,18 +145,8 @@ object RecipeExtractor {
         else -> null
     }
 
-    private fun youtubeThumbnail(url: String): String? {
-        val uri = Uri.parse(url)
-        val segments = uri.pathSegments
-        val id = when {
-            uri.host?.lowercase() == "youtu.be" -> segments.firstOrNull()
-            uri.getQueryParameter("v") != null -> uri.getQueryParameter("v")
-            segments.firstOrNull() in setOf("shorts", "embed", "live", "v") -> segments.getOrNull(1)
-            else -> null
-        } ?: return null
-        if (!Regex("^[A-Za-z0-9_-]{11}$").matches(id)) return null
-        return "https://i.ytimg.com/vi/$id/hqdefault.jpg"
-    }
+    private fun youtubeThumbnail(url: String): String? =
+        UrlTools.youtubeVideoId(url)?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" }
 
     // ---------- JSON-LD recipes ----------
 
@@ -207,7 +215,7 @@ object RecipeExtractor {
     // ---------- Social platforms ----------
 
     private fun tiktokOEmbed(url: String): Extracted? {
-        val json = JSONObject(get("https://www.tiktok.com/oembed?url=${enc(url)}"))
+        val json = JSONObject(getText("https://www.tiktok.com/oembed?url=${enc(url)}"))
         val caption = json.optString("title").trim()
         if (caption.isEmpty()) return null
         val image = resolveImage(json.optString("thumbnail_url"), url)
@@ -215,22 +223,25 @@ object RecipeExtractor {
     }
 
     private fun youtubeOEmbed(url: String): Extracted? {
-        val json = JSONObject(get("https://www.youtube.com/oembed?url=${enc(url)}&format=json"))
+        val json = JSONObject(getText("https://www.youtube.com/oembed?url=${enc(url)}&format=json"))
         val title = json.optString("title").trim()
         if (title.isEmpty()) return null
         return Extracted(title, "", resolveImage(json.optString("thumbnail_url"), url))
     }
 
-    // Unofficial: reads the full description embedded in the page. Falls back to og:description.
-    private fun youtubeDescription(html: String): String? {
+    // Unofficial: reads the full description that YouTube embeds in the page's scripts.
+    // Falls back to og:description if the page layout changes.
+    private fun youtubeDescription(doc: Document): String? {
         val key = "\"shortDescription\":\""
-        val start = html.indexOf(key).takeIf { it >= 0 } ?: return null
+        val script = doc.select("script").map { it.data() }.firstOrNull { key in it }
+            ?: return null
+        val start = script.indexOf(key)
         val quoted = StringBuilder("\"")
         var i = start + key.length
-        while (i < html.length) {
-            val c = html[i]
-            if (c == '\\' && i + 1 < html.length) {
-                quoted.append(c).append(html[i + 1]); i += 2; continue
+        while (i < script.length) {
+            val c = script[i]
+            if (c == '\\' && i + 1 < script.length) {
+                quoted.append(c).append(script[i + 1]); i += 2; continue
             }
             if (c == '"') break
             quoted.append(c); i++
@@ -239,18 +250,14 @@ object RecipeExtractor {
         return (JSONTokener(quoted.toString()).nextValue() as? String)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
-    // Unofficial and fragile: tries the public embed page first, then the preview tags
-    // Instagram serves to link-preview crawlers. Both may stop working at any time.
-    private fun instagramCaption(url: String): Extracted? =
-        runCatching { instagramEmbed(url) }.getOrNull()
-            ?: runCatching { instagramPreview(url) }.getOrNull()
-
+    // Unofficial and fragile: Instagram's public embed page. It may stop working at any time,
+    // in which case the import falls back to the page's own tags and then to pasting.
     private fun instagramEmbed(url: String): Extracted? {
         val match = Regex("""instagram\.com/(p|reel|reels|tv)/([A-Za-z0-9_-]+)""").find(url)
             ?: return null
         val (type, code) = match.destructured
         val kind = if (type == "reels") "reel" else type
-        val html = get("https://www.instagram.com/$kind/$code/embed/captioned/")
+        val html = getText("https://www.instagram.com/$kind/$code/embed/captioned/")
         val doc = Jsoup.parse(html, "https://www.instagram.com/")
 
         val captionElement = doc.selectFirst(".Caption") ?: return null
@@ -261,20 +268,6 @@ object RecipeExtractor {
 
         val image = resolveImage(doc.selectFirst("img.EmbeddedMediaImage")?.absUrl("src"), url)
         return Extracted(shortTitle(caption), caption, image)
-    }
-
-    private fun instagramPreview(url: String): Extracted? {
-        val html = get(
-            url,
-            mapOf("User-Agent" to "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)")
-        )
-        val doc = Jsoup.parse(html, url)
-        val description = meta(doc, "og:description") ?: return null
-        // Format is usually: 12 likes, 3 comments - user on date: "the caption"
-        val caption = Regex("""^.*?:\s*["“](.*)["”]\.?$""", RegexOption.DOT_MATCHES_ALL)
-            .find(description)?.groupValues?.get(1)?.trim()
-            ?.takeIf { it.isNotEmpty() } ?: return null
-        return Extracted(shortTitle(caption), caption, resolveImage(meta(doc, "og:image"), url))
     }
 
     private fun shortTitle(caption: String): String {

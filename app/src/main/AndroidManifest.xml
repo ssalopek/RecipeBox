@@ -20,11 +20,17 @@
             android:theme="@style/Theme.RecipeBox"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTop">
+
+            <!-- App icon in the launcher. Must stay separate: it has no data type. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Share target for links and text from other apps. -->
+            <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.LAUNCHER" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>

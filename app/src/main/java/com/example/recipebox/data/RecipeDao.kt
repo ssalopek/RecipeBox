@@ -55,6 +55,9 @@ interface RecipeDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertLinks(links: List<RecipeCategory>)
 
+    @Query("SELECT id FROM categories")
+    suspend fun categoryIds(): List<Long>
+
     @Query("UPDATE categories SET name = :name WHERE id = :id")
     suspend fun renameCategory(id: Long, name: String)
 

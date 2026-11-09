@@ -1,15 +1,24 @@
 package com.example.recipebox
 
 import android.app.Application
+import android.widget.Toast
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.example.recipebox.data.AppDatabase
 import com.example.recipebox.data.Category
 import com.example.recipebox.data.ImageStore
+import com.example.recipebox.data.Platform
 import com.example.recipebox.data.Recipe
 import com.example.recipebox.data.RecipeCategory
+import com.example.recipebox.data.RecipeExtractor
 import com.example.recipebox.data.UrlTools
+import com.example.recipebox.data.imageFileNames
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +32,22 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val dao = db.recipeDao()
 
+    private fun toast(message: String) =
+        Toast.makeText(getApplication<Application>(), message, Toast.LENGTH_LONG).show()
+
+    /** Runs a database job without letting an unexpected error crash the app. */
+    private fun launchSafely(errorMessage: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast(errorMessage)
+            }
+        }
+    }
+
     // ---------- Categories ----------
 
     val categories: StateFlow<List<Category>> = dao.observeCategories()
@@ -35,7 +60,7 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
     fun observeCategoriesOf(recipeId: Long): Flow<List<Category>> =
         dao.observeCategoriesOf(recipeId)
 
-    /** Calls onResult(newId), or onResult(null) if the name is empty or already taken. */
+    /** Calls onResult(newId), or onResult(null) if the name is empty, taken, or saving failed. */
     fun createCategory(name: String, onResult: (Long?) -> Unit = {}) {
         val clean = name.trim()
         if (clean.isEmpty()) {
@@ -43,23 +68,19 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            if (dao.findCategoryByName(clean) != null) {
-                onResult(null)
-                return@launch
+            val id = try {
+                if (dao.findCategoryByName(clean) != null) null
+                else dao.insertCategory(Category(name = clean)).takeIf { it != -1L }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
             }
-            val id = dao.insertCategory(Category(name = clean))
-            onResult(id.takeIf { it != -1L })
+            onResult(id)
         }
     }
 
-    private suspend fun setCategories(recipeId: Long, ids: Set<Long>) {
-        db.withTransaction {
-            dao.clearLinks(recipeId)
-            dao.insertLinks(ids.map { RecipeCategory(recipeId, it) })
-        }
-    }
-
-    /** Calls onResult(false) if another category already has that name. */
+    /** Calls onResult(false) if the name is empty, taken by another category, or saving failed. */
     fun renameCategory(id: Long, name: String, onResult: (Boolean) -> Unit) {
         val clean = name.trim()
         if (clean.isEmpty()) {
@@ -67,22 +88,51 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            val clash = dao.findCategoryByName(clean)
-            if (clash != null && clash.id != id) {
-                onResult(false)
-            } else {
-                dao.renameCategory(id, clean)
-                onResult(true)
+            val ok = try {
+                val clash = dao.findCategoryByName(clean)
+                if (clash != null && clash.id != id) {
+                    false
+                } else {
+                    dao.renameCategory(id, clean)
+                    true
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
             }
+            onResult(ok)
         }
     }
 
     fun deleteCategory(id: Long) {
-        viewModelScope.launch {
+        launchSafely("Couldn't delete the category") {
             dao.deleteCategory(id)
             if (_selectedCategory.value == id) _selectedCategory.value = null
         }
     }
+
+    /** Drops category IDs that no longer exist, so a deleted category can't break a save. */
+    private suspend fun validCategoryIds(ids: Set<Long>): Set<Long> {
+        if (ids.isEmpty()) return ids
+        val existing = dao.categoryIds().toSet()
+        return ids.filter { it in existing }.toSet()
+    }
+
+    private suspend fun setCategories(recipeId: Long, ids: Set<Long>) {
+        db.withTransaction {
+            dao.clearLinks(recipeId)
+            dao.insertLinks(validCategoryIds(ids).map { RecipeCategory(recipeId, it) })
+        }
+    }
+
+    /** Inserts the recipe and its category links together, or neither. */
+    private suspend fun insertWithCategories(recipe: Recipe, categoryIds: Set<Long>): Long =
+        db.withTransaction {
+            val id = dao.insert(recipe)
+            dao.insertLinks(validCategoryIds(categoryIds).map { RecipeCategory(id, it) })
+            id
+        }
 
     // ---------- Search and filter ----------
 
@@ -99,22 +149,124 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
         val needle = q.trim()
         all.filter { r ->
             (inCategory == null || r.id in inCategory) &&
-                    (needle.isEmpty() ||
-                            r.title.contains(needle, ignoreCase = true) ||
-                            r.bodyText.contains(needle, ignoreCase = true) ||
-                            (r.sourceUrl?.let {
-                                UrlTools.sourceLabel(it).contains(needle, ignoreCase = true)
-                            } ?: false))
+                (needle.isEmpty() ||
+                    r.title.contains(needle, ignoreCase = true) ||
+                    r.bodyText.contains(needle, ignoreCase = true) ||
+                    (r.sourceUrl?.let {
+                        UrlTools.sourceLabel(it).contains(needle, ignoreCase = true)
+                    } ?: false))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // ---------- Sharing ----------
+    // ---------- Import ----------
 
+    /** Only a signal for the navigation to open the import screen. The data is in importDraft. */
     private val _sharedText = MutableStateFlow<String?>(null)
     val sharedText: StateFlow<String?> = _sharedText.asStateFlow()
-
-    fun onShared(text: String?) { _sharedText.value = text }
     fun consumeShared() { _sharedText.value = null }
+
+    var importDraft by mutableStateOf<ImportDraft?>(null)
+        private set
+    private var importJob: Job? = null
+
+    /** Called when another app shares text or a link to this one. */
+    fun onShared(text: String?) {
+        if (text == null) return
+        startImport(text)
+        _sharedText.value = text
+    }
+
+    private fun startImport(text: String) {
+        importJob?.cancel()
+
+        val rawUrl = UrlTools.extractUrl(text)
+        val url = rawUrl?.let { UrlTools.normalize(it) }
+        val platform = url?.let { UrlTools.identifyPlatform(it) }
+
+        val draft = ImportDraft(text, url, platform)
+        draft.body = if (rawUrl == null) text else text.replace(rawUrl, "").trim()
+        importDraft = draft
+        if (url == null) return
+
+        importJob = viewModelScope.launch {
+            try {
+                val existing = dao.findBySourceUrl(url)
+                if (existing != null) {
+                    draft.duplicateId = existing.id
+                    draft.loading = false
+                    return@launch
+                }
+
+                val result = RecipeExtractor.extract(url, platform ?: Platform.OTHER)
+                if (result != null) {
+                    draft.title = result.title
+                    draft.body = result.body.ifBlank { draft.body }
+                    draft.image = result.image
+                    draft.note = if (result.body.isBlank()) {
+                        "Only the title was available. Paste the caption or recipe text below."
+                    } else {
+                        "Check the text below and fix anything that looks off before saving."
+                    }
+                } else {
+                    draft.note =
+                        "Couldn't read this link automatically. Paste the caption or recipe text below."
+                }
+                draft.loading = false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                draft.note = "Couldn't read this link. Paste the caption or recipe text below."
+                draft.loading = false
+            }
+        }
+    }
+
+    /** Leaves the import screen: forgets the draft and stops any fetch still running. */
+    fun finishImport() {
+        importJob?.cancel()
+        importJob = null
+        importDraft = null
+    }
+
+    /** Downloads the image, saves the recipe with its categories, then calls onDone. */
+    fun saveImport(onDone: () -> Unit) {
+        val draft = importDraft ?: return
+        if (draft.saving) return
+        draft.saving = true
+
+        viewModelScope.launch {
+            var imageName = ""
+            try {
+                if (draft.url == null || dao.findBySourceUrl(draft.url) == null) {
+                    val imageUrl = draft.image
+                    if (imageUrl != null) {
+                        imageName = ImageStore.save(getApplication(), imageUrl).orEmpty()
+                        if (imageName.isEmpty()) {
+                            toast("The image couldn't be downloaded. Saving without it.")
+                        }
+                    }
+                    insertWithCategories(
+                        Recipe(
+                            title = draft.title.trim(),
+                            bodyText = draft.body,
+                            sourceUrl = draft.url,
+                            sourcePlatform = draft.platform?.name,
+                            imageName = imageName
+                        ),
+                        draft.selected
+                    )
+                }
+                onDone()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Don't leave an orphaned image file behind
+                if (imageName.isNotEmpty()) ImageStore.deleteAll(getApplication(), listOf(imageName))
+                draft.saving = false
+                draft.note = "Couldn't save the recipe. Please try again."
+            }
+        }
+    }
 
     // ---------- Recipes ----------
 
@@ -129,63 +281,34 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
         removeImage: Boolean,
         categoryIds: Set<Long>
     ) {
-        viewModelScope.launch {
-            val recipeId = if (existing == null) {
-                dao.insert(Recipe(title = title.trim(), bodyText = body))
+        launchSafely("Couldn't save the recipe") {
+            if (existing == null) {
+                insertWithCategories(
+                    Recipe(title = title.trim(), bodyText = body),
+                    categoryIds
+                )
             } else {
-                dao.update(
-                    existing.copy(
-                        title = title.trim(),
-                        bodyText = body,
-                        imageName = if (removeImage) "" else existing.imageName
+                db.withTransaction {
+                    dao.update(
+                        existing.copy(
+                            title = title.trim(),
+                            bodyText = body,
+                            imageName = if (removeImage) "" else existing.imageName
+                        )
                     )
-                )
-                if (removeImage) {
-                    ImageStore.deleteAll(
-                        getApplication(),
-                        existing.imageName.lines().filter { it.isNotBlank() }
-                    )
+                    setCategories(existing.id, categoryIds)
                 }
-                existing.id
+                if (removeImage) {
+                    ImageStore.deleteAll(getApplication(), existing.imageFileNames)
+                }
             }
-            setCategories(recipeId, categoryIds)
-        }
-    }
-
-    fun saveImported(
-        title: String,
-        body: String,
-        sourceUrl: String?,
-        platform: String?,
-        imageUrl: String?,
-        categoryIds: Set<Long>,
-        onDone: () -> Unit
-    ) {
-        viewModelScope.launch {
-            if (sourceUrl == null || dao.findBySourceUrl(sourceUrl) == null) {
-                val imageName = imageUrl?.let { ImageStore.save(getApplication(), it) }.orEmpty()
-                val recipeId = dao.insert(
-                    Recipe(
-                        title = title.trim(),
-                        bodyText = body,
-                        sourceUrl = sourceUrl,
-                        sourcePlatform = platform,
-                        imageName = imageName
-                    )
-                )
-                setCategories(recipeId, categoryIds)
-            }
-            onDone()
         }
     }
 
     fun delete(recipe: Recipe) {
-        viewModelScope.launch {
+        launchSafely("Couldn't delete the recipe") {
             dao.delete(recipe)
-            ImageStore.deleteAll(
-                getApplication(),
-                recipe.imageName.lines().filter { it.isNotBlank() }
-            )
+            ImageStore.deleteAll(getApplication(), recipe.imageFileNames)
         }
     }
 }

@@ -9,58 +9,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.example.recipebox.data.Platform
-import com.example.recipebox.data.RecipeExtractor
-import com.example.recipebox.data.UrlTools
 
 @Composable
 fun ImportScreen(
     vm: RecipeViewModel,
-    sharedText: String,
     onSaved: () -> Unit,
     onDuplicate: (Long) -> Unit,
     onCancel: () -> Unit
 ) {
-    val rawUrl = remember(sharedText) { UrlTools.extractUrl(sharedText) }
-    val url = remember(rawUrl) { rawUrl?.let { UrlTools.normalize(it) } }
-    val platform = remember(url) { url?.let { UrlTools.identifyPlatform(it) } }
+    // The import state lives in the ViewModel so it survives rotation.
+    // It is null only for a moment while the screen is being left.
+    val draft = vm.importDraft ?: return
 
-    var selected by remember { mutableStateOf(setOf<Long>()) }
-
-    var title by remember { mutableStateOf("") }
-    var body by remember {
-        mutableStateOf(
-            if (rawUrl == null) sharedText else sharedText.replace(rawUrl, "").trim()
-        )
-    }
-    var image by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(url != null) }
-    var saving by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(url) {
-        if (url == null) return@LaunchedEffect
-
-        val existing = vm.findBySourceUrl(url)
-        if (existing != null) {
-            onDuplicate(existing.id)
-            return@LaunchedEffect
-        }
-
-        val result = RecipeExtractor.extract(url, platform ?: Platform.OTHER)
-        if (result != null) {
-            title = result.title
-            body = result.body.ifBlank { body }
-            image = result.image
-            note = if (result.body.isBlank()) {
-                "Only the title was available. Paste the caption or recipe text below."
-            } else {
-                "Check the text below and fix anything that looks off before saving."
-            }
-        } else {
-            note = "Couldn't read this link automatically. Paste the caption or recipe text below."
-        }
-        loading = false
+    // Already saved this link? Open the existing recipe instead of importing again.
+    draft.duplicateId?.let { id ->
+        LaunchedEffect(id) { onDuplicate(id) }
     }
 
     Scaffold { padding ->
@@ -70,8 +33,8 @@ fun ImportScreen(
         ) {
             Text("Import recipe", style = MaterialTheme.typography.titleLarge)
 
-            if (url != null) {
-                SourceTag(url)
+            if (draft.url != null) {
+                SourceTag(draft.url)
             } else {
                 Text(
                     "No link found in the shared text. You can still save it as a recipe.",
@@ -79,14 +42,14 @@ fun ImportScreen(
                 )
             }
 
-            if (loading) {
+            if (draft.loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Text("Fetching recipe…", style = MaterialTheme.typography.bodySmall)
             } else {
-                note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                draft.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
 
-            image?.let { imageUrl ->
+            draft.image?.let { imageUrl ->
                 AsyncImage(
                     model = imageUrl,
                     contentDescription = null,
@@ -96,44 +59,39 @@ fun ImportScreen(
                         .height(160.dp)
                         .clip(RoundedCornerShape(12.dp))
                 )
-                TextButton(enabled = !saving, onClick = { image = null }) {
+                TextButton(enabled = !draft.saving, onClick = { draft.image = null }) {
                     Text("Remove image")
                 }
             }
 
             OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
+                value = draft.title,
+                onValueChange = { draft.title = it },
                 label = { Text("Title") },
                 singleLine = true,
-                enabled = !loading && !saving,
+                enabled = !draft.loading && !draft.saving,
                 modifier = Modifier.fillMaxWidth()
             )
 
             CategoryPicker(
                 vm = vm,
-                selected = selected,
-                onSelectedChange = { selected = it }
+                selected = draft.selected,
+                onSelectedChange = { draft.selected = it }
             )
 
             OutlinedTextField(
-                value = body,
-                onValueChange = { body = it },
+                value = draft.body,
+                onValueChange = { draft.body = it },
                 label = { Text("Ingredients and steps") },
-                enabled = !loading && !saving,
+                enabled = !draft.loading && !draft.saving,
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    enabled = !loading && !saving && title.isNotBlank(),
-                    onClick = {
-                        saving = true
-                        vm.saveImported(
-                            title, body, url, platform?.name, image, selected, onSaved
-                        )
-                    }
-                ) { Text(if (saving) "Saving…" else "Save") }
-                OutlinedButton(enabled = !saving, onClick = onCancel) { Text("Cancel") }
+                    enabled = !draft.loading && !draft.saving && draft.title.isNotBlank(),
+                    onClick = { vm.saveImport(onSaved) }
+                ) { Text(if (draft.saving) "Saving…" else "Save") }
+                OutlinedButton(enabled = !draft.saving, onClick = onCancel) { Text("Cancel") }
             }
         }
     }

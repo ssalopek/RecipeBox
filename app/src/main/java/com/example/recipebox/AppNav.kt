@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 
@@ -12,8 +13,21 @@ fun AppNav(vm: RecipeViewModel) {
     val nav = rememberNavController()
     val shared by vm.sharedText.collectAsState()
 
+    // A new share always lands on a fresh import screen on top of the list.
     LaunchedEffect(shared) {
-        if (shared != null) nav.navigate("import") { popUpTo("list") }
+        if (shared != null) {
+            nav.navigate("import") { popUpTo("list") }
+            vm.consumeShared()
+        }
+    }
+
+    // If the app was restarted by Android while the import screen was open, the draft is gone.
+    // Don't show an empty import screen, go back to the list.
+    val backStackEntry by nav.currentBackStackEntryAsState()
+    LaunchedEffect(backStackEntry) {
+        if (backStackEntry?.destination?.route == "import" && vm.importDraft == null) {
+            nav.popBackStack()
+        }
     }
 
     NavHost(navController = nav, startDestination = "list") {
@@ -48,15 +62,20 @@ fun AppNav(vm: RecipeViewModel) {
             )
         }
         composable("import") {
-            val text = remember { vm.sharedText.value.orEmpty() }
-            LaunchedEffect(Unit) { vm.consumeShared() }
-
             ImportScreen(
                 vm = vm,
-                sharedText = text,
-                onSaved = { nav.popBackStack() },
-                onDuplicate = { id -> nav.navigate("view/$id") { popUpTo("list") } },
-                onCancel = { nav.popBackStack() }
+                onSaved = {
+                    nav.popBackStack()
+                    vm.finishImport()
+                },
+                onDuplicate = { id ->
+                    nav.navigate("view/$id") { popUpTo("list") }
+                    vm.finishImport()
+                },
+                onCancel = {
+                    nav.popBackStack()
+                    vm.finishImport()
+                }
             )
         }
     }

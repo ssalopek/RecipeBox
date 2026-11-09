@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -32,17 +33,24 @@ fun RecipeEditScreen(
     }.collectAsState(initial = null)
 
     val context = LocalContext.current
-    var title by remember(existing) { mutableStateOf(existing?.title ?: "") }
-    var body by remember(existing) { mutableStateOf(existing?.bodyText ?: "") }
-    var removeImage by remember(existing) { mutableStateOf(false) }
 
-    var selected by remember(id) { mutableStateOf(emptySet<Long>()) }
-    var selectionLoaded by remember(id) { mutableStateOf(false) }
-    LaunchedEffect(assigned) {
-        val current = assigned
-        if (!selectionLoaded && current != null) {
-            selected = current.map { it.id }.toSet()
-            selectionLoaded = true
+    // rememberSaveable keeps what you typed when the phone rotates or the theme changes
+    var title by rememberSaveable(id) { mutableStateOf("") }
+    var body by rememberSaveable(id) { mutableStateOf("") }
+    var removeImage by rememberSaveable(id) { mutableStateOf(false) }
+    var selected by rememberSaveable(id, stateSaver = LongSetSaver) {
+        mutableStateOf(emptySet<Long>())
+    }
+    var initialised by rememberSaveable(id) { mutableStateOf(false) }
+
+    // Fill the fields from the saved recipe once, and never overwrite later edits
+    val ready = assigned != null && (id == 0L || existing != null)
+    LaunchedEffect(ready) {
+        if (ready && !initialised) {
+            title = existing?.title.orEmpty()
+            body = existing?.bodyText.orEmpty()
+            selected = assigned.orEmpty().map { it.id }.toSet()
+            initialised = true
         }
     }
 
@@ -88,7 +96,7 @@ fun RecipeEditScreen(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    enabled = title.isNotBlank() && selectionLoaded,
+                    enabled = title.isNotBlank() && initialised,
                     onClick = {
                         vm.save(existing, title, body, removeImage, selected)
                         onDone()

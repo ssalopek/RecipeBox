@@ -7,12 +7,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.recipebox.data.Category
+
+/** Lets rememberSaveable keep a set of category IDs across rotation. */
+val LongSetSaver = listSaver<Set<Long>, Long>(
+    save = { it.toList() },
+    restore = { it.toSet() }
+)
 
 /** onCreate gets the name and a callback: call it with true to close the dialog, false to show the error. */
 @Composable
@@ -67,7 +76,7 @@ fun CategoryPicker(
     modifier: Modifier = Modifier
 ) {
     val categories by vm.categories.collectAsState()
-    var showNew by remember { mutableStateOf(false) }
+    var showNew by rememberSaveable { mutableStateOf(false) }
     var managing by remember { mutableStateOf<Category?>(null) }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -160,6 +169,8 @@ fun CategoryChip(
         modifier = Modifier
             .clip(shape)
             .combinedClickable(
+                role = Role.Button,
+                onLongClickLabel = "Rename or delete",
                 onClick = onClick,
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)

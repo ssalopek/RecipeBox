@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.recipebox"
+        applicationId = "com.project.recipebox"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
@@ -64,4 +64,9 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+}
+
+// Write Room's schema to app/schemas so migrations can be tested. Commit that folder.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
