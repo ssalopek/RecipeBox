@@ -310,10 +310,14 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun delete(recipe: Recipe) {
-        launchSafely("Couldn't delete the recipe") {
-            dao.delete(recipe)
-            ImageStore.deleteAll(getApplication(), recipe.imageFileNames)
+    fun delete(recipe: Recipe) = deleteRecipes(listOf(recipe))
+
+    /** Deletes the recipes, their category links (by cascade) and their image files. */
+    fun deleteRecipes(recipes: List<Recipe>) {
+        if (recipes.isEmpty()) return
+        launchSafely("Couldn't delete the recipes") {
+            dao.deleteAll(recipes)
+            ImageStore.deleteAll(getApplication(), recipes.flatMap { it.imageFileNames })
         }
     }
 

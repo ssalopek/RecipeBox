@@ -28,6 +28,9 @@ interface RecipeDao {
     @Delete
     suspend fun delete(recipe: Recipe)
 
+    @Delete
+    suspend fun deleteAll(recipes: List<Recipe>)
+
     // ---------- Categories ----------
 
     @Query("SELECT * FROM categories ORDER BY name COLLATE NOCASE")

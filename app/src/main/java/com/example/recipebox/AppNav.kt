@@ -35,7 +35,8 @@ fun AppNav(vm: RecipeViewModel) {
             RecipeListScreen(
                 vm = vm,
                 onAdd = { nav.navigate("edit/0") },
-                onOpen = { id -> nav.navigate("view/$id") }
+                onOpen = { id -> nav.navigate("view/$id") },
+                onEdit = { id -> nav.navigate("edit/$id") }
             )
         }
         composable(
