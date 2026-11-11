@@ -1,7 +1,6 @@
 package com.example.recipebox
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -9,6 +8,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.example.recipebox.ui.theme.recipeFieldColors
 
 @Composable
 fun ImportScreen(
@@ -28,25 +28,36 @@ fun ImportScreen(
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize(),
+            modifier = Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 16.dp).fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Import recipe", style = MaterialTheme.typography.titleLarge)
+            Text("Import recipe", style = MaterialTheme.typography.headlineSmall)
 
             if (draft.url != null) {
                 SourceTag(draft.url)
             } else {
                 Text(
                     "No link found in the shared text. You can still save it as a recipe.",
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             if (draft.loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Text("Fetching recipe…", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Fetching recipe…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             } else {
-                draft.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                draft.note?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             draft.image?.let { imageUrl ->
@@ -57,7 +68,7 @@ fun ImportScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.medium)
                 )
                 TextButton(enabled = !draft.saving, onClick = { draft.image = null }) {
                     Text("Remove image")
@@ -69,6 +80,8 @@ fun ImportScreen(
                 onValueChange = { draft.title = it },
                 label = { Text("Title") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
+                colors = recipeFieldColors(),
                 enabled = !draft.loading && !draft.saving,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -83,6 +96,8 @@ fun ImportScreen(
                 value = draft.body,
                 onValueChange = { draft.body = it },
                 label = { Text("Ingredients and steps") },
+                shape = MaterialTheme.shapes.small,
+                colors = recipeFieldColors(),
                 enabled = !draft.loading && !draft.saving,
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )

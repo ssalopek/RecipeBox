@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import com.example.recipebox.ui.theme.RecipeBoxTheme
 
 class MainActivity : ComponentActivity() {
@@ -12,6 +13,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Cream app, so the status and navigation bar icons must be dark
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
         // Only on a fresh start, so a recreated activity (theme or language change) doesn't re-import.
         if (savedInstanceState == null) handleShare(intent)
         setContent {

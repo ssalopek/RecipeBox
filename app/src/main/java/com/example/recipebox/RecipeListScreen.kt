@@ -1,12 +1,14 @@
 package com.example.recipebox
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,12 +20,16 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.example.recipebox.data.Category
 import com.example.recipebox.data.ImageStore
 import com.example.recipebox.data.coverImage
+import com.example.recipebox.ui.theme.recipeFieldColors
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -65,7 +71,12 @@ fun RecipeListScreen(
     Scaffold(
         floatingActionButton = {
             if (!selecting) {
-                ExtendedFloatingActionButton(onClick = onAdd) { Text("Add recipe") }
+                ExtendedFloatingActionButton(
+                    onClick = onAdd,
+                    containerColor = MaterialTheme.colorScheme.tertiary,
+                    contentColor = MaterialTheme.colorScheme.onTertiary,
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("+ Add recipe", fontWeight = FontWeight.SemiBold) }
             }
         }
     ) { padding ->
@@ -90,15 +101,21 @@ fun RecipeListScreen(
                     onClose = { exitSelection() }
                 )
             } else {
+                Text(
+                    "Recipes",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp)
+                )
+
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item {
-                        FilterChip(
+                        CategoryChip(
+                            label = "All",
                             selected = selectedCategory == null,
-                            onClick = { vm.selectCategory(null) },
-                            label = { Text("All") }
+                            onClick = { vm.selectCategory(null) }
                         )
                     }
                     items(categories, key = { it.id }) { category ->
@@ -114,9 +131,11 @@ fun RecipeListScreen(
                         )
                     }
                     item {
-                        AssistChip(
+                        CategoryChip(
+                            label = "+ New",
+                            selected = false,
                             onClick = { showNewCategory = true },
-                            label = { Text("+ New category") }
+                            accent = true
                         )
                     }
                 }
@@ -124,14 +143,19 @@ fun RecipeListScreen(
                 OutlinedTextField(
                     value = query,
                     onValueChange = vm::setQuery,
-                    label = { Text("Search recipes") },
+                    placeholder = { Text("Search recipes") },
                     singleLine = true,
+                    shape = CircleShape,
+                    colors = recipeFieldColors(),
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             TextButton(onClick = { vm.setQuery("") }) { Text("Clear") }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp)
+                        .semantics { contentDescription = "Search recipes" }
                 )
             }
 
@@ -141,23 +165,32 @@ fun RecipeListScreen(
                         when {
                             query.isNotBlank() -> "No recipes match \"$query\"."
                             selectedCategory != null -> "No recipes in this category yet."
-                            else -> "No recipes yet. Tap Add recipe to start."
-                        }
+                            else -> "No recipes yet. Tap + Add recipe to start."
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
+                    // extra room at the bottom so the Add recipe button never covers the last card
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(recipes, key = { it.id }) { recipe ->
                         val isSelected = recipe.id in selected
-                        Card(
-                            colors = if (isSelected) {
-                                CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                )
-                            } else CardDefaults.cardColors(),
+                        OutlinedCard(
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = if (isSelected) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerLowest
+                                }
+                            ),
+                            border = BorderStroke(
+                                if (isSelected) 2.dp else 1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .combinedClickable(
@@ -184,8 +217,8 @@ fun RecipeListScreen(
                                 )
                         ) {
                             Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.padding(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (selecting) {
@@ -198,7 +231,7 @@ fun RecipeListScreen(
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
                                             .size(72.dp)
-                                            .clip(RoundedCornerShape(8.dp))
+                                            .clip(RoundedCornerShape(12.dp))
                                     )
                                 }
                                 Column(Modifier.weight(1f)) {
@@ -206,13 +239,17 @@ fun RecipeListScreen(
                                         recipe.title,
                                         style = MaterialTheme.typography.titleMedium
                                     )
-                                    recipe.sourceUrl?.let { SourceTag(it) }
+                                    recipe.sourceUrl?.let {
+                                        SourceTag(it, Modifier.padding(top = 4.dp))
+                                    }
                                     if (recipe.bodyText.isNotBlank()) {
                                         Text(
                                             recipe.bodyText,
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,
-                                            style = MaterialTheme.typography.bodyMedium
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(top = 6.dp)
                                         )
                                     }
                                 }
@@ -231,10 +268,15 @@ fun RecipeListScreen(
             title = { Text(if (count == 1) "Delete this recipe?" else "Delete $count recipes?") },
             text = { Text("This can't be undone.") },
             confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteRecipes(selectedRecipes)
-                    exitSelection()
-                }) { Text("Delete") }
+                TextButton(
+                    onClick = {
+                        vm.deleteRecipes(selectedRecipes)
+                        exitSelection()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) { Text("Delete") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }

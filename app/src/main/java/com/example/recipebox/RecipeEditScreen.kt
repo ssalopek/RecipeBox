@@ -1,7 +1,6 @@
 package com.example.recipebox
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -14,6 +13,7 @@ import coil3.compose.AsyncImage
 import com.example.recipebox.data.Category
 import com.example.recipebox.data.ImageStore
 import com.example.recipebox.data.coverImage
+import com.example.recipebox.ui.theme.recipeFieldColors
 import kotlinx.coroutines.flow.flowOf
 
 @Composable
@@ -56,9 +56,13 @@ fun RecipeEditScreen(
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier.padding(padding).padding(16.dp).fillMaxSize(),
+            modifier = Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 16.dp).fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text(
+                if (id == 0L) "New recipe" else "Edit recipe",
+                style = MaterialTheme.typography.headlineSmall
+            )
             existing?.sourceUrl?.let { SourceTag(it) }
 
             existing?.coverImage?.takeIf { !removeImage }?.let { name ->
@@ -69,7 +73,7 @@ fun RecipeEditScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.medium)
                 )
                 TextButton(onClick = { removeImage = true }) { Text("Remove image") }
             }
@@ -79,6 +83,8 @@ fun RecipeEditScreen(
                 onValueChange = { title = it },
                 label = { Text("Title") },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
+                colors = recipeFieldColors(),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -92,6 +98,8 @@ fun RecipeEditScreen(
                 value = body,
                 onValueChange = { body = it },
                 label = { Text("Ingredients and steps") },
+                shape = MaterialTheme.shapes.small,
+                colors = recipeFieldColors(),
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -106,10 +114,15 @@ fun RecipeEditScreen(
                 OutlinedButton(onClick = onDone) { Text("Cancel") }
 
                 existing?.let { recipe ->
-                    TextButton(onClick = {
-                        vm.delete(recipe)
-                        onDeleted()
-                    }) { Text("Delete") }
+                    TextButton(
+                        onClick = {
+                            vm.delete(recipe)
+                            onDeleted()
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) { Text("Delete") }
                 }
             }
         }

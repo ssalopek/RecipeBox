@@ -4,16 +4,20 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.example.recipebox.ui.theme.recipeFieldColors
 import androidx.compose.ui.unit.dp
 import com.example.recipebox.data.Category
 
@@ -44,6 +48,7 @@ fun NewCategoryDialog(
                 },
                 label = { Text("Name") },
                 singleLine = true,
+                colors = recipeFieldColors(),
                 isError = error != null,
                 supportingText = { error?.let { Text(it) } }
             )
@@ -84,7 +89,8 @@ fun CategoryPicker(
         if (categories.isNotEmpty()) {
             Text(
                 "Hold a category to rename or delete it",
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         FlowRow(
@@ -104,7 +110,12 @@ fun CategoryPicker(
                     onLongClick = { managing = category }
                 )
             }
-            AssistChip(onClick = { showNew = true }, label = { Text("+ New category") })
+            CategoryChip(
+                label = "+ New category",
+                selected = false,
+                onClick = { showNew = true },
+                accent = true
+            )
         }
     }
 
@@ -144,45 +155,56 @@ fun CategoryTags(categories: List<Category>, modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         categories.forEach { category ->
-            SuggestionChip(onClick = {}, label = { Text(category.name) })
+            TagPill(category.name, MaterialTheme.colorScheme.secondaryContainer)
         }
     }
 }
 
-/** A filter-style chip that also supports long-press. */
+/**
+ * A pill-shaped chip. Pass onLongClick to also support long-press.
+ * accent = the outlined, green-text style used for "+ New" buttons.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CategoryChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: (() -> Unit)? = null,
+    accent: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
-    val shape = RoundedCornerShape(8.dp)
+    val colors = MaterialTheme.colorScheme
     Surface(
-        shape = shape,
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer
-        else MaterialTheme.colorScheme.surface,
-        border = if (selected) null
-        else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = CircleShape,
+        color = if (selected) colors.primary else colors.background,
+        contentColor = when {
+            selected -> colors.onPrimary
+            accent -> colors.primary
+            else -> colors.onSurface
+        },
+        border = if (selected) null else BorderStroke(1.dp, colors.outline),
         modifier = Modifier
-            .clip(shape)
+            .clip(CircleShape)
+            .semantics { this.selected = selected }
             .combinedClickable(
                 role = Role.Button,
-                onLongClickLabel = "Rename or delete",
+                onLongClickLabel = if (onLongClick != null) "Rename or delete" else null,
                 onClick = onClick,
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongClick()
+                onLongClick = onLongClick?.let { handler ->
+                    {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        handler()
+                    }
                 }
             )
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-        )
+        Box(
+            modifier = Modifier.heightIn(min = 44.dp).padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
     }
 }
 
@@ -225,6 +247,7 @@ fun ManageCategoryDialog(
                     },
                     label = { Text("Name") },
                     singleLine = true,
+                colors = recipeFieldColors(),
                     isError = error != null,
                     supportingText = { error?.let { Text(it) } }
                 )

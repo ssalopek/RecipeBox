@@ -1,5 +1,6 @@
 package com.example.recipebox
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -7,12 +8,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.example.recipebox.data.ImageStore
 import com.example.recipebox.data.coverImage
@@ -41,7 +41,7 @@ fun RecipeViewScreen(
             Column(
                 modifier = Modifier
                     .padding(padding)
-                    .padding(16.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -51,9 +51,6 @@ fun RecipeViewScreen(
                     Button(onClick = onEdit) { Text("Edit") }
                 }
 
-                Text(r.title, style = MaterialTheme.typography.headlineSmall)
-                r.sourceUrl?.let { SourceTag(it) }
-                CategoryTags(categories)
                 r.coverImage?.let { name ->
                     AsyncImage(
                         model = ImageStore.file(context, name),
@@ -62,12 +59,28 @@ fun RecipeViewScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(MaterialTheme.shapes.medium)
                     )
                 }
 
-                SelectionContainer {
-                    Text(r.bodyText, style = MaterialTheme.typography.bodyLarge)
+                Text(r.title, style = MaterialTheme.typography.headlineSmall)
+                r.sourceUrl?.let { SourceTag(it) }
+                CategoryTags(categories)
+
+                // The recipe text sits on a white card, like the cards on the home screen
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    SelectionContainer {
+                        Text(
+                            r.bodyText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
                 }
             }
         }
