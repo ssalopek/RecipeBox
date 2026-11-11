@@ -20,6 +20,8 @@ class ImportDraft(
     var image by mutableStateOf<String?>(null)
     var note by mutableStateOf<String?>(null)
     var loading by mutableStateOf(url != null)
+    /** 0f..1f, one step per source the extractor tries. */
+    var progress by mutableStateOf(0f)
     var saving by mutableStateOf(false)
     var selected by mutableStateOf(emptySet<Long>())
 

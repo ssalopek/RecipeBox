@@ -1,5 +1,6 @@
 package com.example.recipebox.data
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,27 +23,59 @@ data class Extracted(
 object RecipeExtractor {
     private const val MAX_BYTES = 3L * 1024 * 1024
 
-    suspend fun extract(url: String, platform: Platform): Extracted? =
+    private const val TAG = "RecipeExtractor"
+
+    /**
+     * Tries each source in order and returns the first that gives something.
+     * [onProgress] gets 0f..1f, advancing one step per source tried.
+     */
+    suspend fun extract(
+        url: String,
+        platform: Platform,
+        onProgress: (Float) -> Unit = {}
+    ): Extracted? =
         withContext(Dispatchers.IO) {
-            try {
-                val result = when (platform) {
-                    Platform.TIKTOK ->
-                        runCatching { tiktokOEmbed(url) }.getOrNull() ?: fromPage(url, platform)
-                    Platform.INSTAGRAM ->
-                        runCatching { instagramEmbed(url) }.getOrNull() ?: fromPage(url, platform)
-                    Platform.YOUTUBE ->
-                        runCatching { fromPage(url, platform) }.getOrNull() ?: youtubeOEmbed(url)
-                    else -> fromPage(url, platform)
-                }
-                // YouTube thumbnails can be built from the video ID if the page gave no image
-                if (platform == Platform.YOUTUBE && result != null && result.image == null) {
-                    result.copy(image = youtubeThumbnail(url))
-                } else result
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                null
+            val steps: List<Pair<String, () -> Extracted?>> = when (platform) {
+                Platform.TIKTOK -> listOf(
+                    "tiktok oembed" to { tiktokOEmbed(url) },
+                    "page" to { fromPage(url, platform) }
+                )
+                Platform.INSTAGRAM -> listOf(
+                    "instagram embed" to { instagramEmbed(url) },
+                    "instagram link preview" to { instagramPreview(url) },
+                    "page" to { fromPage(url, platform) }
+                )
+                Platform.YOUTUBE -> listOf(
+                    "page" to { fromPage(url, platform) },
+                    "youtube oembed" to { youtubeOEmbed(url) }
+                )
+                else -> listOf("page" to { fromPage(url, platform) })
             }
+
+            onProgress(0.1f)
+            var result: Extracted? = null
+            for ((i, step) in steps.withIndex()) {
+                result = attempt(step.first, step.second)
+                if (result != null) break
+                onProgress(0.1f + 0.8f * (i + 1) / steps.size)
+            }
+            // YouTube thumbnails can be built from the video ID if the page gave no image
+            if (platform == Platform.YOUTUBE && result != null && result.image == null) {
+                result = result.copy(image = youtubeThumbnail(url))
+            }
+            onProgress(0.95f)
+            result
+        }
+
+    /** Runs one source. A failure is logged (see Logcat, tag RecipeExtractor) and treated as "nothing found". */
+    private fun attempt(name: String, block: () -> Extracted?): Extracted? =
+        try {
+            block().also { if (it == null) Log.w(TAG, "$name: returned nothing") }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$name failed: ${e.message}")
+            null
         }
 
     // ---------- Networking ----------
@@ -111,6 +144,9 @@ object RecipeExtractor {
             ?: meta(doc, "description")
         val title = pageTitle(doc)
         if (title.isBlank() && description.isNullOrBlank()) return null
+        // Instagram's login wall only has a generic title and nothing else
+        if (platform == Platform.INSTAGRAM && description.isNullOrBlank() &&
+            title.equals("Instagram", ignoreCase = true)) return null
         return Extracted(title, description.orEmpty(), ogImage)
     }
 
@@ -267,6 +303,19 @@ object RecipeExtractor {
             .joinToString("\n") { it.trim() }.trim().takeIf { it.isNotEmpty() } ?: return null
 
         val image = resolveImage(doc.selectFirst("img.EmbeddedMediaImage")?.absUrl("src"), url)
+        return Extracted(shortTitle(caption), caption, image)
+    }
+
+    // Instagram serves link-preview crawlers a page with og tags that include the caption:
+    //   og:description = 12 likes, 3 comments - user on May 1, 2026: "caption".
+    // Used when the embed page gives nothing. Also unofficial and may change.
+    private fun instagramPreview(url: String): Extracted? {
+        val doc = getDocument(url, mapOf("User-Agent" to "facebookexternalhit/1.1"))
+        val raw = meta(doc, "og:description") ?: meta(doc, "og:title") ?: return null
+        val caption = Regex("""^.*?\son\s.+?:\s*["\u201C](.+?)["\u201D]\.?\s*$""",
+            RegexOption.DOT_MATCHES_ALL)
+            .find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val image = resolveImage(meta(doc, "og:image"), url)
         return Extracted(shortTitle(caption), caption, image)
     }
 

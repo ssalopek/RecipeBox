@@ -1,5 +1,7 @@
 package com.example.recipebox
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,9 +46,17 @@ fun ImportScreen(
             }
 
             if (draft.loading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                val animated by animateFloatAsState(
+                    targetValue = draft.progress,
+                    animationSpec = tween(300),
+                    label = "importProgress"
+                )
+                LinearProgressIndicator(
+                    progress = { animated },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Text(
-                    "Fetching recipe…",
+                    "Fetching recipe… ${(animated * 100).toInt()}%",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

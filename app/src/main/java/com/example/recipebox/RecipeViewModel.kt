@@ -195,6 +195,7 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
 
         importJob = viewModelScope.launch {
             try {
+                draft.progress = 0.05f
                 val existing = dao.findBySourceUrl(url)
                 if (existing != null) {
                     draft.duplicateId = existing.id
@@ -202,7 +203,7 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
 
-                val result = RecipeExtractor.extract(url, platform ?: Platform.OTHER)
+                val result = RecipeExtractor.extract(url, platform ?: Platform.OTHER) { draft.progress = it }
                 if (result != null) {
                     draft.title = result.title
                     draft.body = result.body.ifBlank { draft.body }
@@ -216,6 +217,7 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
                     draft.note =
                         "Couldn't read this link automatically. Paste the caption or recipe text below."
                 }
+                draft.progress = 1f
                 draft.loading = false
             } catch (e: CancellationException) {
                 throw e
