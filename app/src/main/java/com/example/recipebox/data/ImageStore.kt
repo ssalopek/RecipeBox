@@ -92,4 +92,22 @@ object ImageStore {
         }
         return result
     }
+
+    /**
+     * Saves an image that comes out of a backup. It was already shrunk when it was first saved,
+     * so the bytes are written as they are. Returns the new file name, or null if it isn't an image.
+     */
+    suspend fun saveBytes(context: Context, bytes: ByteArray): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0) error("not an image")
+                val name = "${UUID.randomUUID()}.jpg"
+                val target = file(context, name)
+                target.parentFile?.mkdirs()
+                target.writeBytes(bytes)
+                name
+            }.getOrNull()
+        }
 }

@@ -66,4 +66,18 @@ interface RecipeDao {
 
     @Query("DELETE FROM categories WHERE id = :id")
     suspend fun deleteCategory(id: Long)
+
+    // ---------- Backup ----------
+
+    @Query("SELECT * FROM recipes ORDER BY createdAt")
+    suspend fun allRecipes(): List<Recipe>
+
+    @Query("SELECT * FROM categories")
+    suspend fun allCategories(): List<Category>
+
+    @Query("SELECT * FROM recipe_categories")
+    suspend fun allLinks(): List<RecipeCategory>
+
+    @Query("SELECT COUNT(*) FROM recipes WHERE sourceUrl IS NULL AND title = :title AND bodyText = :body")
+    suspend fun countManual(title: String, body: String): Int
 }

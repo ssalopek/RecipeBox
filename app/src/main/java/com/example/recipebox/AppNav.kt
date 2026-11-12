@@ -36,7 +36,8 @@ fun AppNav(vm: RecipeViewModel) {
                 vm = vm,
                 onAdd = { nav.navigate("edit/0") },
                 onOpen = { id -> nav.navigate("view/$id") },
-                onEdit = { id -> nav.navigate("edit/$id") }
+                onEdit = { id -> nav.navigate("edit/$id") },
+                onSettings = { nav.navigate("settings") }
             )
         }
         composable(
@@ -61,6 +62,9 @@ fun AppNav(vm: RecipeViewModel) {
                 onDone = { nav.popBackStack() },
                 onDeleted = { nav.popBackStack("list", inclusive = false) }
             )
+        }
+        composable("settings") {
+            SettingsScreen(onBack = { nav.popBackStack() })
         }
         composable("import") {
             ImportScreen(

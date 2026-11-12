@@ -41,7 +41,8 @@ fun RecipeListScreen(
     vm: RecipeViewModel,
     onAdd: () -> Unit,
     onOpen: (Long) -> Unit,
-    onEdit: (Long) -> Unit
+    onEdit: (Long) -> Unit,
+    onSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -105,11 +106,19 @@ fun RecipeListScreen(
                     onClose = { exitSelection() }
                 )
             } else {
-                Text(
-                    "Recipes",
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Recipes",
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SettingsButton(onClick = onSettings)
+                }
 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
