@@ -3,6 +3,8 @@ package com.example.recipebox
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -78,7 +80,8 @@ fun CategoryPicker(
     vm: RecipeViewModel,
     selected: Set<Long>,
     onSelectedChange: (Set<Long>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false   // one scrolling line instead of wrapping, saves space on the edit screen
 ) {
     val categories by vm.categories.collectAsState()
     var showNew by rememberSaveable { mutableStateOf(false) }
@@ -93,10 +96,7 @@ fun CategoryPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        val chips: @Composable () -> Unit = {
             categories.forEach { category ->
                 CategoryChip(
                     label = category.name,
@@ -116,6 +116,17 @@ fun CategoryPicker(
                 onClick = { showNew = true },
                 accent = true
             )
+        }
+        if (compact) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) { chips() }
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) { chips() }
         }
     }
 
@@ -162,7 +173,7 @@ fun CategoryTags(categories: List<Category>, modifier: Modifier = Modifier) {
 
 /**
  * A pill-shaped chip. Pass onLongClick to also support long-press.
- * accent = the outlined, green-text style used for "+ New" buttons.
+ * accent is kept for later. The "+ New" chips currently look like the others.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -177,13 +188,9 @@ fun CategoryChip(
     val colors = MaterialTheme.colorScheme
     Surface(
         shape = CircleShape,
-        color = if (selected) colors.primary else colors.background,
-        contentColor = when {
-            selected -> colors.onPrimary
-            accent -> colors.primary
-            else -> colors.onSurface
-        },
-        border = if (selected) null else BorderStroke(1.dp, colors.outline),
+        color = if (selected) colors.primary else colors.surfaceContainer,
+        contentColor = if (selected) colors.onPrimary else colors.outline,
+        border = if (selected) null else BorderStroke(1.5.dp, colors.outline),
         modifier = Modifier
             .clip(CircleShape)
             .semantics { this.selected = selected }

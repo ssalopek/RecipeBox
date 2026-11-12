@@ -24,13 +24,13 @@ private val LightColorScheme = lightColorScheme(
     onBackground = DarkGreen,
     surface = Cream,
     onSurface = DarkGreen,
-    surfaceVariant = Beige,
+    surfaceVariant = TagFill,
     onSurfaceVariant = MutedGreyGreen,
     surfaceTint = MediumGreen,
     inverseSurface = DarkGreen,
     inverseOnSurface = Cream,
     inversePrimary = Sage,
-    outline = Tan,
+    outline = Ink,
     outlineVariant = BeigeBorder,
     error = ErrorRed,
     onError = Color.White,
@@ -39,11 +39,11 @@ private val LightColorScheme = lightColorScheme(
     scrim = Color.Black,
     surfaceBright = Cream,
     surfaceDim = Color(0xFFE6E0C8),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFFBF8EA),
-    surfaceContainer = Color(0xFFF6F2E0),
+    surfaceContainerLowest = CardFill,
+    surfaceContainerLow = Color(0xFFE2DAC6),
+    surfaceContainer = ChipFill,
     surfaceContainerHigh = Beige,
-    surfaceContainerHighest = Color(0xFFEDE6CD)
+    surfaceContainerHighest = Color(0xFFD9CFB8)
 )
 
 @Composable
@@ -56,12 +56,12 @@ fun RecipeBoxTheme(content: @Composable () -> Unit) {
     )
 }
 
-/** White text fields with a visible outline. Used on every screen with an input. */
+/** Text fields filled like the cards, with a dark outline. Used on every screen with an input. */
 @Composable
 fun recipeFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = Color.White,
-    unfocusedContainerColor = Color.White,
-    unfocusedBorderColor = FieldBorder,
+    focusedContainerColor = FieldFill,
+    unfocusedContainerColor = FieldFill,
+    unfocusedBorderColor = Ink,
     focusedPlaceholderColor = MutedGreyGreen,
     unfocusedPlaceholderColor = MutedGreyGreen
 )

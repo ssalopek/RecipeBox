@@ -3,6 +3,8 @@ package com.example.recipebox
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -29,89 +31,104 @@ fun ImportScreen(
     }
 
     Scaffold { padding ->
-        Column(
-            modifier = Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 16.dp).fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Import recipe", style = MaterialTheme.typography.headlineSmall)
+        // imePadding shrinks this column to the space above the keyboard
+        Column(Modifier
+            .padding(padding)
+            .consumeWindowInsets(padding)
+            .imePadding()
+            .fillMaxSize()) {
+            // Everything except the buttons scrolls, so the recipe text can be tall
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Import recipe", style = MaterialTheme.typography.headlineSmall)
 
-            if (draft.url != null) {
-                SourceTag(draft.url)
-            } else {
-                Text(
-                    "No link found in the shared text. You can still save it as a recipe.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (draft.loading) {
-                val animated by animateFloatAsState(
-                    targetValue = draft.progress,
-                    animationSpec = tween(300),
-                    label = "importProgress"
-                )
-                LinearProgressIndicator(
-                    progress = { animated },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "Fetching recipe… ${(animated * 100).toInt()}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                draft.note?.let {
+                if (draft.url != null) {
+                    SourceTag(draft.url)
+                } else {
                     Text(
-                        it,
+                        "No link found in the shared text. You can still save it as a recipe.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
 
-            draft.image?.let { imageUrl ->
-                AsyncImage(
-                    model = imageUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                if (draft.loading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "Fetching recipe…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    draft.note?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+
+                draft.image?.let { imageUrl ->
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(MaterialTheme.shapes.medium)
+                    )
+                    TextButton(enabled = !draft.saving, onClick = { draft.image = null }) {
+                        Text("Remove image")
+                    }
+                }
+
+
+                OutlinedTextField(
+                    value = draft.title,
+                    onValueChange = { draft.title = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.small,
+                    colors = recipeFieldColors(),
+                    enabled = !draft.loading && !draft.saving,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                CategoryPicker(
+                    vm = vm,
+                    selected = draft.selected,
+                    onSelectedChange = { draft.selected = it }
+                )
+
+                OutlinedTextField(
+                    value = draft.body,
+                    onValueChange = { draft.body = it },
+                    label = { Text("Ingredients and steps") },
+                    shape = MaterialTheme.shapes.small,
+                    colors = recipeFieldColors(),
+                    enabled = !draft.loading && !draft.saving,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(MaterialTheme.shapes.medium)
+                        .heightIn(min = 360.dp)
                 )
-                TextButton(enabled = !draft.saving, onClick = { draft.image = null }) {
-                    Text("Remove image")
-                }
             }
 
-            OutlinedTextField(
-                value = draft.title,
-                onValueChange = { draft.title = it },
-                label = { Text("Title") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                colors = recipeFieldColors(),
-                enabled = !draft.loading && !draft.saving,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            CategoryPicker(
-                vm = vm,
-                selected = draft.selected,
-                onSelectedChange = { draft.selected = it }
-            )
-
-            OutlinedTextField(
-                value = draft.body,
-                onValueChange = { draft.body = it },
-                label = { Text("Ingredients and steps") },
-                shape = MaterialTheme.shapes.small,
-                colors = recipeFieldColors(),
-                enabled = !draft.loading && !draft.saving,
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Save and Cancel stay on screen above the keyboard
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     enabled = !draft.loading && !draft.saving && draft.title.isNotBlank(),
                     onClick = { vm.saveImport(onSaved) }

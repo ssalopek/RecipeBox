@@ -2,6 +2,7 @@ package com.example.recipebox
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -73,9 +77,9 @@ fun RecipeListScreen(
             if (!selecting) {
                 ExtendedFloatingActionButton(
                     onClick = onAdd,
-                    containerColor = MaterialTheme.colorScheme.tertiary,
-                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                    shape = RoundedCornerShape(16.dp)
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
                 ) { Text("+ Add recipe", fontWeight = FontWeight.SemiBold) }
             }
         }
@@ -145,6 +149,7 @@ fun RecipeListScreen(
                     onValueChange = vm::setQuery,
                     placeholder = { Text("Search recipes") },
                     singleLine = true,
+                    leadingIcon = { SearchGlyph() },
                     shape = CircleShape,
                     colors = recipeFieldColors(),
                     trailingIcon = {
@@ -179,6 +184,8 @@ fun RecipeListScreen(
                     items(recipes, key = { it.id }) { recipe ->
                         val isSelected = recipe.id in selected
                         OutlinedCard(
+                            shape = RoundedCornerShape(24.dp),
+                            elevation = CardDefaults.outlinedCardElevation(defaultElevation = 3.dp),
                             colors = CardDefaults.outlinedCardColors(
                                 containerColor = if (isSelected) {
                                     MaterialTheme.colorScheme.secondaryContainer
@@ -230,7 +237,7 @@ fun RecipeListScreen(
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
-                                            .size(72.dp)
+                                            .size(width = 96.dp, height = 112.dp)
                                             .clip(RoundedCornerShape(12.dp))
                                     )
                                 }
@@ -299,6 +306,28 @@ fun RecipeListScreen(
             onDismiss = { managing = null },
             onRename = { name, onResult -> vm.renameCategory(category.id, name, onResult) },
             onDelete = { vm.deleteCategory(category.id) }
+        )
+    }
+}
+
+/** A small magnifying glass, drawn by hand so the app needs no icon library. */
+@Composable
+private fun SearchGlyph() {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(Modifier.size(22.dp)) {
+        val stroke = 2.dp.toPx()
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.34f,
+            center = Offset(size.width * 0.42f, size.height * 0.42f),
+            style = Stroke(width = stroke)
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.66f, size.height * 0.66f),
+            end = Offset(size.width * 0.92f, size.height * 0.92f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
         )
     }
 }

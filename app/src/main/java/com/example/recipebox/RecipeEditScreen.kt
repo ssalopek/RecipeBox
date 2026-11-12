@@ -1,13 +1,19 @@
 package com.example.recipebox
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.example.recipebox.data.Category
@@ -42,6 +48,7 @@ fun RecipeEditScreen(
         mutableStateOf(emptySet<Long>())
     }
     var initialised by rememberSaveable(id) { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     // Fill the fields from the saved recipe once, and never overwrite later edits
     val ready = assigned != null && (id == 0L || existing != null)
@@ -55,54 +62,121 @@ fun RecipeEditScreen(
     }
 
     Scaffold { padding ->
-        Column(
-            modifier = Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 16.dp).fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                if (id == 0L) "New recipe" else "Edit recipe",
-                style = MaterialTheme.typography.headlineSmall
-            )
-            existing?.sourceUrl?.let { SourceTag(it) }
+        // imePadding shrinks this column to the space above the keyboard. Without it the
+        // keyboard covers the bottom of the text, and you cannot scroll down to it.
+        Column(Modifier
+            .padding(padding)
+            .consumeWindowInsets(padding)
+            .imePadding()
+            .fillMaxSize()) {
+            // Everything except the buttons scrolls, so the recipe text can be as tall as it needs
+            // to be and the title and categories simply scroll out of the way while you type.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (id == 0L) "New recipe" else "Edit recipe",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (existing != null) {
+                        TextButton(
+                            onClick = { confirmDelete = true },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) { Text("Delete") }
+                    }
+                }
 
-            existing?.coverImage?.takeIf { !removeImage }?.let { name ->
-                AsyncImage(
-                    model = ImageStore.file(context, name),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                // The image can only be removed, not changed, so it is just a small thumbnail
+                val coverName = existing?.coverImage
+                val sourceUrl = existing?.sourceUrl
+                if (coverName != null || sourceUrl != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (coverName != null && !removeImage) {
+                            AsyncImage(
+                                model = ImageStore.file(context, coverName),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(MaterialTheme.shapes.small)
+                            )
+                        }
+                        Column(Modifier.weight(1f)) {
+                            sourceUrl?.let { SourceTag(it) }
+                            if (coverName != null) {
+                                if (removeImage) {
+                                    Text(
+                                        "Image will be removed when you save",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    TextButton(onClick = { removeImage = false }) { Text("Undo") }
+                                } else {
+                                    TextButton(onClick = { removeImage = true }) {
+                                        Text("Remove image")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Next
+                    ),
+                    shape = MaterialTheme.shapes.small,
+                    colors = recipeFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                CategoryPicker(
+                    vm = vm,
+                    selected = selected,
+                    onSelectedChange = { selected = it },
+                    compact = true
+                )
+
+                // The part that matters most: tall from the start, and it keeps growing with the text
+                OutlinedTextField(
+                    value = body,
+                    onValueChange = { body = it },
+                    label = { Text("Ingredients and steps") },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences
+                    ),
+                    shape = MaterialTheme.shapes.small,
+                    colors = recipeFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(MaterialTheme.shapes.medium)
+                        .heightIn(min = 420.dp)
                 )
-                TextButton(onClick = { removeImage = true }) { Text("Remove image") }
             }
 
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("Title") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                colors = recipeFieldColors(),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            CategoryPicker(
-                vm = vm,
-                selected = selected,
-                onSelectedChange = { selected = it }
-            )
-
-            OutlinedTextField(
-                value = body,
-                onValueChange = { body = it },
-                label = { Text("Ingredients and steps") },
-                shape = MaterialTheme.shapes.small,
-                colors = recipeFieldColors(),
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Save and Cancel stay on screen above the keyboard
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(
                     enabled = title.isNotBlank() && initialised,
                     onClick = {
@@ -110,12 +184,22 @@ fun RecipeEditScreen(
                         onDone()
                     }
                 ) { Text("Save") }
-
                 OutlinedButton(onClick = onDone) { Text("Cancel") }
+            }
+        }
+    }
 
-                existing?.let { recipe ->
+    if (confirmDelete) {
+        val recipe = existing
+        if (recipe != null) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Delete this recipe?") },
+                text = { Text("This can't be undone.") },
+                confirmButton = {
                     TextButton(
                         onClick = {
+                            confirmDelete = false
                             vm.delete(recipe)
                             onDeleted()
                         },
@@ -123,8 +207,11 @@ fun RecipeEditScreen(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) { Text("Delete") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
                 }
-            }
+            )
         }
     }
 }
