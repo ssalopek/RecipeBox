@@ -1,5 +1,9 @@
 package com.example.recipebox
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,6 +48,8 @@ fun RecipeEditScreen(
     var title by rememberSaveable(id) { mutableStateOf("") }
     var body by rememberSaveable(id) { mutableStateOf("") }
     var removeImage by rememberSaveable(id) { mutableStateOf(false) }
+    // A picture chosen from the phone. It is only saved when you tap Save.
+    var pickedImage by rememberSaveable(id) { mutableStateOf<Uri?>(null) }
     var selected by rememberSaveable(id, stateSaver = LongSetSaver) {
         mutableStateOf(emptySet<Long>())
     }
@@ -59,6 +65,19 @@ fun RecipeEditScreen(
             selected = assigned.orEmpty().map { it.id }.toSet()
             initialised = true
         }
+    }
+
+    // The system photo picker needs no storage permission
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            pickedImage = uri
+            removeImage = false
+        }
+    }
+    val launchPicker = {
+        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     Scaffold { padding ->
@@ -94,40 +113,49 @@ fun RecipeEditScreen(
                     }
                 }
 
-                // The image can only be removed, not changed, so it is just a small thumbnail
+                // Small thumbnail. The image found on the page is the default, but you can
+                // remove it or replace it with a picture from your phone.
                 val coverName = existing?.coverImage
                 val sourceUrl = existing?.sourceUrl
-                if (coverName != null || sourceUrl != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (coverName != null && !removeImage) {
-                            AsyncImage(
-                                model = ImageStore.file(context, coverName),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .clip(MaterialTheme.shapes.small)
-                            )
-                        }
-                        Column(Modifier.weight(1f)) {
-                            sourceUrl?.let { SourceTag(it) }
-                            if (coverName != null) {
-                                if (removeImage) {
-                                    Text(
-                                        "Image will be removed when you save",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    TextButton(onClick = { removeImage = false }) { Text("Undo") }
-                                } else {
-                                    TextButton(onClick = { removeImage = true }) {
-                                        Text("Remove image")
-                                    }
-                                }
+                val hasOriginal = coverName != null
+                val shownImage: Any? = pickedImage
+                    ?: coverName?.takeIf { !removeImage }?.let { ImageStore.file(context, it) }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (shownImage != null) {
+                        AsyncImage(
+                            model = shownImage,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(MaterialTheme.shapes.small)
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        sourceUrl?.let { SourceTag(it) }
+                        if (shownImage != null) {
+                            Row {
+                                TextButton(onClick = { launchPicker() }) { Text("Change image") }
+                                TextButton(onClick = {
+                                    pickedImage = null
+                                    removeImage = hasOriginal
+                                }) { Text("Remove image") }
                             }
+                        } else if (removeImage && hasOriginal) {
+                            Text(
+                                "Image will be removed when you save",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row {
+                                TextButton(onClick = { removeImage = false }) { Text("Undo") }
+                                TextButton(onClick = { launchPicker() }) { Text("Choose image") }
+                            }
+                        } else {
+                            TextButton(onClick = { launchPicker() }) { Text("Add image") }
                         }
                     }
                 }
@@ -180,7 +208,7 @@ fun RecipeEditScreen(
                 Button(
                     enabled = title.isNotBlank() && initialised,
                     onClick = {
-                        vm.save(existing, title, body, removeImage, selected)
+                        vm.save(existing, title, body, removeImage, selected, pickedImage)
                         onDone()
                     }
                 ) { Text("Save") }

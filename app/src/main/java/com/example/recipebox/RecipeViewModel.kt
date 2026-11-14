@@ -1,6 +1,7 @@
 package com.example.recipebox
 
 import android.app.Application
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -245,8 +246,14 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
             var imageName = ""
             try {
                 if (draft.url == null || dao.findBySourceUrl(draft.url) == null) {
+                    val picked = draft.pickedImage
                     val imageUrl = draft.image
-                    if (imageUrl != null) {
+                    if (picked != null) {
+                        imageName = ImageStore.saveFromUri(getApplication(), picked).orEmpty()
+                        if (imageName.isEmpty()) {
+                            toast("The image couldn't be read. Saving without it.")
+                        }
+                    } else if (imageUrl != null) {
                         imageName = ImageStore.save(getApplication(), imageUrl).orEmpty()
                         if (imageName.isEmpty()) {
                             toast("The image couldn't be downloaded. Saving without it.")
@@ -281,33 +288,51 @@ class RecipeViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun findBySourceUrl(url: String): Recipe? = dao.findBySourceUrl(url)
 
+    /** newImage is a picture the user chose. It replaces the current one, if there is one. */
     fun save(
         existing: Recipe?,
         title: String,
         body: String,
         removeImage: Boolean,
-        categoryIds: Set<Long>
+        categoryIds: Set<Long>,
+        newImage: Uri? = null
     ) {
         launchSafely("Couldn't save the recipe") {
-            if (existing == null) {
-                insertWithCategories(
-                    Recipe(title = title.trim(), bodyText = body),
-                    categoryIds
-                )
-            } else {
-                db.withTransaction {
-                    dao.update(
-                        existing.copy(
-                            title = title.trim(),
-                            bodyText = body,
-                            imageName = if (removeImage) "" else existing.imageName
-                        )
+            var newName: String? = null
+            try {
+                if (newImage != null) {
+                    newName = ImageStore.saveFromUri(getApplication(), newImage)
+                    if (newName == null) toast("The new image couldn't be read.")
+                }
+                val replacement = newName
+                if (existing == null) {
+                    insertWithCategories(
+                        Recipe(title = title.trim(), bodyText = body, imageName = replacement.orEmpty()),
+                        categoryIds
                     )
-                    setCategories(existing.id, categoryIds)
+                } else {
+                    db.withTransaction {
+                        dao.update(
+                            existing.copy(
+                                title = title.trim(),
+                                bodyText = body,
+                                imageName = when {
+                                    replacement != null -> replacement
+                                    removeImage -> ""
+                                    else -> existing.imageName
+                                }
+                            )
+                        )
+                        setCategories(existing.id, categoryIds)
+                    }
+                    if (replacement != null || removeImage) {
+                        ImageStore.deleteAll(getApplication(), existing.imageFileNames)
+                    }
                 }
-                if (removeImage) {
-                    ImageStore.deleteAll(getApplication(), existing.imageFileNames)
-                }
+            } catch (e: Exception) {
+                // Don't leave the new image file behind if the save failed
+                newName?.let { ImageStore.deleteAll(getApplication(), listOf(it)) }
+                throw e
             }
         }
     }

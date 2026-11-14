@@ -86,7 +86,7 @@ fun RecipeListScreen(
         }
     ) { padding ->
         Column(Modifier.padding(padding)) {
-            DebugBar(vm)
+//            DebugBar(vm)
 
             if (selecting) {
                 SelectionBar(

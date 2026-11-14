@@ -2,6 +2,9 @@ package com.example.recipebox
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +31,14 @@ fun ImportScreen(
     // Already saved this link? Open the existing recipe instead of importing again.
     draft.duplicateId?.let { id ->
         LaunchedEffect(id) { onDuplicate(id) }
+    }
+
+    // The system photo picker needs no storage permission
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) draft.pickedImage = uri }
+    val launchPicker = {
+        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     Scaffold { padding ->
@@ -75,9 +86,12 @@ fun ImportScreen(
                 }
 
 
-                draft.image?.let { imageUrl ->
+                // The image found on the page is the default. You can replace it with a picture
+                // from your phone, or remove it.
+                val preview: Any? = draft.pickedImage ?: draft.image
+                if (preview != null) {
                     AsyncImage(
-                        model = imageUrl,
+                        model = preview,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -85,11 +99,21 @@ fun ImportScreen(
                             .height(160.dp)
                             .clip(MaterialTheme.shapes.medium)
                     )
-                    TextButton(enabled = !draft.saving, onClick = { draft.image = null }) {
-                        Text("Remove image")
+                    Row {
+                        TextButton(enabled = !draft.saving, onClick = { launchPicker() }) {
+                            Text("Change image")
+                        }
+                        TextButton(enabled = !draft.saving, onClick = {
+                            draft.image = null
+                            draft.pickedImage = null
+                        }) { Text("Remove image") }
                     }
+                } else {
+                    TextButton(
+                        enabled = !draft.loading && !draft.saving,
+                        onClick = { launchPicker() }
+                    ) { Text("Add image") }
                 }
-
 
                 OutlinedTextField(
                     value = draft.title,
